@@ -53,6 +53,7 @@
         .hora { background: #e3f2fd; padding: 10px; font-weight: bold; border-radius: 5px; font-size: 12px; color: #0d47a1; display: flex; align-items: center; justify-content: center; }
         
         .celda { min-height: 85px; display: flex; flex-direction: column; justify-content: center; align-items: center; border: 1px solid #eee; border-radius: 5px; background: white; cursor: pointer; padding: 5px; text-align: center; font-size: 11px; transition: 0.2s; }
+        .celda.seleccionada { background: #fff59d; border: 2px solid #fbc02d; }
         .recreo { background: #fff3e0; color: #e65100; cursor: default; font-weight: 900; font-size: 28px; font-family: 'Arial Black', Gadget, sans-serif; }
         
         .ocupado { color: white; font-weight: bold; cursor: default; }
@@ -158,12 +159,17 @@
 <div id="toast"></div>
 
 <script>
+// CONFIGURACIÓN DE TU NUEVO PROYECTO FIREBASE
 const firebaseConfig = {
-    apiKey: "AIzaSyAtUo0_SaYsJYhBSJ-CwW1GU1Y4Iemq92M",
-    authDomain: "reserva-crt.firebaseapp.com",
-    projectId: "reserva-crt",
-    databaseURL: "https://reserva-crt-default-rtdb.firebaseio.com"
+    apiKey: "AIzaSyBjVEgG7cuK7WFV0st0baexRJT_d-JiLI",
+    authDomain: "registro-de-asistencia--aip.firebaseapp.com",
+    databaseURL: "https://registro-de-asistencia--aip-default-rtdb.firebaseio.com/",
+    projectId: "registro-de-asistencia--aip",
+    storageBucket: "registro-de-asistencia--aip.firebasestorage.app",
+    messagingSenderId: "144933939611",
+    appId: "1:144933939611:web:2f085e90df49a2080a9694"
 };
+
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
@@ -223,23 +229,42 @@ function manejarClickCelda(id, d, h) {
     }
     if(el.classList.contains('ocupado')) return;
     const idx = celdasSeleccionadas.findIndex(c => c.id === id);
-    if(idx > -1) { celdasSeleccionadas.splice(idx, 1); el.classList.remove('seleccionada'); }
-    else { celdasSeleccionadas.push({id, d, h}); el.classList.add('seleccionada'); }
+    if(idx > -1) { 
+        celdasSeleccionadas.splice(idx, 1); 
+        el.classList.remove('seleccionada'); 
+    } else { 
+        celdasSeleccionadas.push({id, d, h}); 
+        el.classList.add('seleccionada'); 
+    }
 }
 
 function registrarAsistencia() {
     const doc = document.getElementById("docente").value;
     const gra = document.getElementById("grado").value;
     const sec = document.getElementById("seccion").value;
-    if(!doc || !gra || !sec || celdasSeleccionadas.length === 0) { toast("⚠️ Complete los datos"); return; }
+    if(!doc || !gra || !sec || celdasSeleccionadas.length === 0) { toast("⚠️ Complete los datos y seleccione hora"); return; }
+    
     const updates = {};
     const mesActual = new Date().toISOString().slice(0, 7);
     celdasSeleccionadas.forEach(c => {
         const key = db.ref().push().key;
-        updates[key] = { docente: doc, grado: gra, seccion: sec, dia: c.d, hora: c.h, mes: mesActual, timestamp: Date.now() };
+        updates[key] = { 
+            docente: doc, 
+            grado: gra, 
+            seccion: sec, 
+            dia: c.d, 
+            hora: c.h, 
+            tema: document.getElementById("tema").value,
+            recursos: document.getElementById("recursos").value,
+            estudiantes: document.getElementById("estudiantes").value,
+            mes: mesActual, 
+            timestamp: Date.now() 
+        };
     });
+
     db.ref('asistencias/' + semanaId).update(updates).then(() => {
-        toast("✅ Registrado");
+        toast("✅ Registrado con éxito");
+        celdasSeleccionadas = [];
         setTimeout(() => location.reload(), 1200);
     });
 }
