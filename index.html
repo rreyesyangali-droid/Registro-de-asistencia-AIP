@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro de Asistencia AIP</title>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        * { box-sizing: border-box; }
+        
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; padding: 20px;
+            background: linear-gradient(-45deg, #e3f2fd, #bbdefb, #fff9c4, #f8bbd0);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .container { max-width: 1100px; margin: auto; background: rgba(255, 255, 255, 0.9); padding: 24px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; backdrop-filter: blur(5px); }
+        .logo { display: block; margin: auto; width: 120px; margin-bottom: 20px; }
+        
+        .subtitulo { 
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 26px; color: #1a73e8; margin-bottom: 25px; font-weight: 800; 
+            text-transform: uppercase; letter-spacing: 1.5px;
+            text-shadow: -1px -1px 0 #b3e5fc, 1px -1px 0 #b3e5fc, -1px 1px 0 #b3e5fc, 1px 1px 0 #b3e5fc;
+        }
+
+        .panel-asistencia { background: #fef9e7; border: 1px solid #f9e79f; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 15px; }
+        select, input { padding: 12px; border-radius: 8px; border: 2px solid #1a73e8; font-size: 14px; outline: none; background: white; width: 100%; }
+
+        button { padding: 12px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        .btn-success { background: #2e7d32; color: white; width: 100%; max-width: 400px; font-size: 16px; margin-top: 10px; }
+        .btn-success:hover { background: #1b5e20; transform: translateY(-2px); }
+
+        .semana-info { background: #e8f0fe; padding: 10px 20px; border-radius: 30px; display: inline-block; margin-bottom: 20px; font-size: 15px; color: #1a73e8; font-weight: bold; border: 1px solid #bbdefb; }
+
+        .grid-wrapper { overflow-x: auto; margin-top: 20px; border-radius: 10px; border: 1px solid #ddd; }
+        .grid { display: grid; grid-template-columns: 140px repeat(5, 1fr); gap: 5px; min-width: 800px; padding: 10px; background: #f9f9f9; }
+        .header { background: #1a73e8; color: white; font-weight: bold; padding: 12px; border-radius: 5px; }
+        .hora { background: #e3f2fd; padding: 10px; font-weight: bold; border-radius: 5px; font-size: 12px; color: #0d47a1; display: flex; align-items: center; justify-content: center; }
+        
+        .celda { min-height: 85px; display: flex; flex-direction: column; justify-content: center; align-items: center; border: 1px solid #eee; border-radius: 5px; background: white; cursor: pointer; padding: 5px; text-align: center; font-size: 11px; transition: 0.2s; }
+        .recreo { background: #fff3e0; color: #e65100; cursor: default; font-weight: 900; font-size: 28px; font-family: 'Arial Black', Gadget, sans-serif; }
+        
+        .ocupado { color: white; font-weight: bold; cursor: default; }
+        .admin-mode .ocupado { cursor: cell; border: 2px solid #ff5252; }
+
+        #panelAdmin { margin-top: 40px; padding: 25px; background: #fff; border-radius: 15px; border: 2px dashed #1a73e8; display: none; }
+        .filtro-mensual { margin: 15px 0; background: #f1f8ff; padding: 15px; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+        
+        #toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 15px 30px; border-radius: 50px; display: none; z-index: 2000; font-weight: bold; }
+        #toast.show { display: block; }
+    </style>
+</head>
+
+<body>
+<div class="container">
+    <img src="https://raw.githubusercontent.com/rreyesyangali-droid/reserva-crt/main/logo.jpg" class="logo" alt="Logo">
+    <div class="subtitulo">REGISTRO DE ASISTENCIA AIP</div>
+
+    <div class="semana-info" id="semana-actual">📅 Cargando...</div>
+
+    <div class="panel-asistencia">
+        <div class="form-grid">
+            <select id="docente">
+                <option value="">Seleccione docente...</option>
+                <option>SEMINARIO HUERTA PILAR ELISA</option>
+                <option>SARANGO PEREZ SUSY MAGALY</option>
+                <option>DIOSES GARAY MILAGROS MAGDALENA</option>
+                <option>CAISAHUANA MAYTA, FLOR DE MARIA</option>
+                <option>MENA MENDOZA ESTHER PATRICIA</option>
+                <option>CONTRERAS CHANHUALLA SANDRA BEATRIZ</option>
+                <option>PAUCAR FLORES ROSALVINA BAETRIZ</option>
+                <option>LAZARES PEREZ ANA ROSALBINA</option>
+                <option>CARRASCO ARIAS ANA CECILIA</option>
+                <option>TASAYCO LUYO, LISSET KATHERINE</option>
+                <option>RODRIGUEZ MOLINA MARY LUZ</option>
+                <option>MALDONADO CUETO, PAOLA VERONICA</option>
+                <option>PACHERRES LEON JUANA</option>
+                <option>CASTRO LLANTERHUAY KATHERIN ISABEL</option>
+                <option>TARMEÑO PASCO JAVIER EDUARDO</option>
+                <option>QUISPE CCUNO MARTHA</option>
+                <option>PAUCARCAJA RICSE FELIX JUSTO</option>
+                <option>MALASQUEZ CHUMPITAZI OFELIA LUSMELIDA</option>
+                <option>CAMPOS MARTOS MILAGROS ISABEL</option>
+                <option>CABRERA GUERRA BETHY</option>
+                <option>CASTRO BARDALES FLORIZA MARGOT</option>
+                <option>MENDOZA PAREJA NICOLAS EPIFANIO</option>
+                <option>ALCANTARA SANDOVAL JOSE GONZALO</option>
+                <option>CUEVA CARDENAS ROGER</option>
+                <option>BRAVO RAYMONDI MARISOL</option>
+                <option>JIMENEZ BONIFACIO, ROSAMEL TANIA</option>
+                <option>LIMACHE CORTEZ MARIA ELENA</option>
+                <option>CCAJMA QUISPE ELIZABETH</option>
+                <option>ZAMUDIO SOLORZANO DANIEL</option>
+                <option>PIÑAN ARIZA CARMEN</option>
+                <option>SOSA QUISPE EFRAIN ABEL</option>
+                <option>DIRECTIVOS</option>
+                <option>PSICÓLOGO (A)</option>
+            </select>
+            <select id="grado">
+                <option value="">Grado...</option>
+                <option>DIRECTIVOS</option>
+                <option>PSICÓLOGO (A)</option>
+                <option>1° Primaria</option><option>2° Primaria</option><option>3° Primaria</option>
+                <option>4° Primaria</option><option>5° Primaria</option><option>6° Primaria</option>
+            </select>
+            <select id="seccion">
+                <option value="">Sección...</option>
+                <option>DIRECTIVOS</option>
+                <option>PSICÓLOGO (A)</option>
+                <option>A</option><option>B</option><option>C</option><option>D</option><option>E</option>
+            </select>
+            <input type="number" id="estudiantes" placeholder="Cant. Estudiantes">
+        </div>
+        <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
+            <input type="text" id="tema" placeholder="Tema de la sesión de aprendizaje">
+            <input type="text" id="recursos" placeholder="Recursos TIC utilizados">
+        </div>
+        <button class="btn-success" onclick="registrarAsistencia()">✅ REGISTRO DE ASISTENCIA</button>
+    </div>
+
+    <div class="grid-wrapper">
+        <div class="grid" id="tabla"></div>
+    </div>
+
+    <div style="margin-top: 50px; border-top: 1px solid #ddd; padding-top: 20px;">
+        <button onclick="checkAdmin()" style="background:none; border:none; color:#999; cursor:pointer; font-size: 14px; font-weight: bold;">🔐 Acceso Docente PIP - Primaria</button>
+    </div>
+
+    <div id="panelAdmin">
+        <h3 style="color: #1a73e8;">📈 Informes y Estadísticas</h3>
+        
+        <div class="filtro-mensual">
+            <label>Seleccionar Mes para el Informe: </label>
+            <input type="month" id="mesFiltro" onchange="generarReporteMensual()">
+        </div>
+
+        <div class="chart-box" style="height: 300px;"><canvas id="graficoAsistencia"></canvas></div>
+        
+        <button onclick="location.reload()" style="background:#5f6368; color:white; margin-top:20px;">Cerrar Panel</button>
+    </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const firebaseConfig = {
+    apiKey: "AIzaSyAtUo0_SaYsJYhBSJ-CwW1GU1Y4Iemq92M",
+    authDomain: "reserva-crt.firebaseapp.com",
+    projectId: "reserva-crt",
+    databaseURL: "https://reserva-crt-default-rtdb.firebaseio.com"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+let isAdmin = false;
+let celdasSeleccionadas = [];
+const horas = ["07:45 - 08:30", "08:30 - 09:15", "09:15 - 10:00", "RECREO", "10:30 - 11:15", "11:15 - 12:00", "12:00 - 12:45"];
+const dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
+const breakLetras = ["B", "R", "E", "A", "K"];
+
+function obtenerLunesActualFormateado() {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    const lunes = new Date(d.setDate(diff));
+    const dia = String(lunes.getDate()).padStart(2, '0');
+    const mes = String(lunes.getMonth() + 1).padStart(2, '0');
+    const anio = lunes.getFullYear();
+    return `${dia}-${mes}-${anio}`;
+}
+
+function obtenerIdFirebase() {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    return new Date(d.setDate(diff)).toISOString().split('T')[0];
+}
+
+const semanaDisplay = obtenerLunesActualFormateado();
+const semanaId = obtenerIdFirebase();
+document.getElementById('semana-actual').textContent = "📅 Registro de la Semana: " + semanaDisplay;
+
+function crearTabla() {
+    const tabla = document.getElementById("tabla");
+    let html = "<div></div>";
+    dias.forEach(d => html += `<div class="header">${d}</div>`);
+    horas.forEach(h => {
+        html += `<div class="hora">${h === "RECREO" ? "10:00-10:30" : h}</div>`;
+        dias.forEach((d, i) => {
+            if (h === "RECREO") html += `<div class="celda recreo">${breakLetras[i]}</div>`;
+            else {
+                const id = btoa(d + h).replace(/=/g, "");
+                html += `<div class="celda" id="${id}" onclick="manejarClickCelda('${id}', '${d}', '${h}')"></div>`;
+            }
+        });
+    });
+    tabla.innerHTML = html;
+}
+
+function manejarClickCelda(id, d, h) {
+    const el = document.getElementById(id);
+    if(isAdmin && el.classList.contains('ocupado')) {
+        const key = el.getAttribute('data-key');
+        if(confirm("¿Eliminar este registro?")) {
+            db.ref(`asistencias/${semanaId}/${key}`).remove().then(() => toast("🗑️ Eliminado"));
+        }
+        return;
+    }
+    if(el.classList.contains('ocupado')) return;
+    const idx = celdasSeleccionadas.findIndex(c => c.id === id);
+    if(idx > -1) { celdasSeleccionadas.splice(idx, 1); el.classList.remove('seleccionada'); }
+    else { celdasSeleccionadas.push({id, d, h}); el.classList.add('seleccionada'); }
+}
+
+function registrarAsistencia() {
+    const doc = document.getElementById("docente").value;
+    const gra = document.getElementById("grado").value;
+    const sec = document.getElementById("seccion").value;
+    if(!doc || !gra || !sec || celdasSeleccionadas.length === 0) { toast("⚠️ Complete los datos"); return; }
+    const updates = {};
+    const mesActual = new Date().toISOString().slice(0, 7);
+    celdasSeleccionadas.forEach(c => {
+        const key = db.ref().push().key;
+        updates[key] = { docente: doc, grado: gra, seccion: sec, dia: c.d, hora: c.h, mes: mesActual, timestamp: Date.now() };
+    });
+    db.ref('asistencias/' + semanaId).update(updates).then(() => {
+        toast("✅ Registrado");
+        setTimeout(() => location.reload(), 1200);
+    });
+}
+
+function checkAdmin() {
+    const pass = prompt("Clave de Acceso:");
+    if(pass === "Yarvin24") {
+        isAdmin = true;
+        document.body.classList.add('admin-mode');
+        document.getElementById("panelAdmin").style.display = "block";
+        document.getElementById("mesFiltro").value = new Date().toISOString().slice(0, 7);
+        generarReporteMensual();
+        window.scrollTo(0, document.body.scrollHeight);
+    }
+}
+
+let miChart;
+function generarReporteMensual() {
+    const mesSeleccionado = document.getElementById("mesFiltro").value;
+    db.ref('asistencias').once('value', snap => {
+        const todasAsistencias = snap.val() || {};
+        const conteo = {};
+        Object.values(todasAsistencias).forEach(semana => {
+            Object.values(semana).forEach(reg => {
+                if(reg.mes === mesSeleccionado) {
+                    conteo[reg.docente] = (conteo[reg.docente] || 0) + 1;
+                }
+            });
+        });
+        const ctx = document.getElementById('graficoAsistencia').getContext('2d');
+        if(miChart) miChart.destroy();
+        miChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: Object.keys(conteo).map(n => n.split(' ')[0]),
+                datasets: [{ label: 'Horas Totales del Mes', data: Object.values(conteo), backgroundColor: '#1a73e8' }]
+            },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+    });
+}
+
+function toast(m) {
+    const t = document.getElementById("toast");
+    t.textContent = m; t.className = "show";
+    setTimeout(() => t.className = "", 3000);
+}
+
+db.ref('asistencias/' + semanaId).on('value', snap => {
+    const data = snap.val();
+    crearTabla();
+    if(!data) return;
+    Object.entries(data).forEach(([key, reg]) => {
+        const id = btoa(reg.dia + reg.hora).replace(/=/g, "");
+        const el = document.getElementById(id);
+        if(el) {
+            el.classList.add('ocupado');
+            el.setAttribute('data-key', key);
+            el.style.background = "#1a73e8";
+            el.innerHTML = `<div style="color:white;"><b>${reg.docente.split(' ')[0]}</b><br>${reg.grado}<br>${reg.seccion}</div>`;
+        }
+    });
+});
+
+crearTabla();
+</script>
+</body>
+</html>
