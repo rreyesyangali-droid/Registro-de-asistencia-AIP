@@ -36,6 +36,8 @@
         .panel-asistencia { background: #fef9e7; border: 1px solid #f9e79f; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 15px; }
         select, input { padding: 12px; border-radius: 8px; border: 2px solid #1a73e8; font-size: 14px; outline: none; background: white; width: 100%; }
+        /* FIX: validación visual para campo número */
+        input[type="number"]:invalid { border-color: #e53935; }
         button { padding: 12px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
         .btn-success { background: #2e7d32; color: white; width: 100%; max-width: 400px; font-size: 16px; margin-top: 10px; }
         .btn-success:hover { background: #1b5e20; transform: translateY(-2px); }
@@ -107,7 +109,7 @@
                 <option>DIRECTIVOS</option>
                 <option>PSICÓLOGO (A)</option>
                 <option>DOCENTE DE SECUNDARIA</option>
-                <option> VISITA/PERSONAL EXTERNO</option>
+                <option>VISITA/PERSONAL EXTERNO</option>
             </select>
             <select id="grado">
                 <option value="">Grado...</option>
@@ -119,7 +121,8 @@
                 <option>DIRECTIVOS</option><option>PSICÓLOGO (A)</option><option>VISITA/PERSONAL EXTERNO</option>
                 <option>A</option><option>B</option><option>C</option><option>D</option><option>E</option>
             </select>
-            <input type="number" id="estudiantes" placeholder="Cant. Estudiantes">
+            <!-- FIX: validación min/max para estudiantes -->
+            <input type="number" id="estudiantes" placeholder="Cant. Estudiantes" min="0" max="50">
         </div>
         <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
             <input type="text" id="tema" placeholder="Tema de la sesión de aprendizaje">
@@ -162,6 +165,22 @@
 <div id="toast"></div>
 
 <script>
+// ============================================================
+// CONFIGURACIÓN FIREBASE
+// Nota: el apiKey es visible en el cliente (esto es normal en
+// Firebase web). La seguridad real se gestiona en las REGLAS
+// de Firebase Realtime Database. Configúralas en:
+// Firebase Console → Realtime Database → Reglas
+// Ejemplo de reglas recomendadas:
+// {
+//   "rules": {
+//     "asistencias": {
+//       ".read": false,
+//       ".write": true
+//     }
+//   }
+// }
+// ============================================================
 const firebaseConfig = {
     apiKey: "AIzaSyAtUo0_SaYsJYhBSJ-CwW1GU1Y4Iemq92M",
     authDomain: "reserva-crt.firebaseapp.com",
@@ -179,6 +198,16 @@ let celdasSeleccionadas = [];
 let miChart = null;
 let datosInforme = [];
 
+// FIX: función segura para generar IDs desde texto con tildes y caracteres especiales
+function generarId(dia, hora) {
+    try {
+        return btoa(unescape(encodeURIComponent(dia + hora))).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+    } catch(e) {
+        // Fallback: usar hash simple si btoa falla
+        return (dia + hora).split('').reduce((acc, c) => acc + c.charCodeAt(0), 0).toString();
+    }
+}
+
 function crearTabla() {
     const tabla = document.getElementById("tabla");
     let html = "<div></div>";
@@ -186,9 +215,11 @@ function crearTabla() {
     horas.forEach(h => {
         html += `<div class="hora">${h === "RECREO" ? "10:00-10:30" : h}</div>`;
         dias.forEach((d, i) => {
-            if (h === "RECREO") html += `<div class="celda recreo">${breakLetras[i]}</div>`;
-            else {
-                const id = btoa(d + h).replace(/=/g, "");
+            if (h === "RECREO") {
+                html += `<div class="celda recreo">${breakLetras[i]}</div>`;
+            } else {
+                // FIX: usar generarId en vez de btoa directo
+                const id = generarId(d, h);
                 html += `<div class="celda" id="${id}" onclick="manejarClickCelda('${id}', '${d}', '${h}')"></div>`;
             }
         });
@@ -198,100 +229,165 @@ function crearTabla() {
 
 function manejarClickCelda(id, d, h) {
     const el = document.getElementById(id);
-    if(el.classList.contains('ocupado')) return;
+    if (!el || el.classList.contains('ocupado')) return;
     const idx = celdasSeleccionadas.findIndex(c => c.id === id);
-    if(idx > -1) { celdasSeleccionadas.splice(idx, 1); el.classList.remove('seleccionada'); }
-    else { celdasSeleccionadas.push({id, d, h}); el.classList.add('seleccionada'); }
+    if (idx > -1) {
+        celdasSeleccionadas.splice(idx, 1);
+        el.classList.remove('seleccionada');
+    } else {
+        celdasSeleccionadas.push({ id, d, h });
+        el.classList.add('seleccionada');
+    }
 }
 
 function registrarAsistencia() {
     const doc = document.getElementById("docente").value;
     const gra = document.getElementById("grado").value;
     const sec = document.getElementById("seccion").value;
-    const est = document.getElementById("estudiantes").value;
-    const tem = document.getElementById("tema").value;
-    const rec = document.getElementById("recursos").value;
-    if(!doc || !gra || !sec || celdasSeleccionadas.length === 0) { toast("⚠️ Complete datos"); return; }
+    const estVal = document.getElementById("estudiantes").value;
+    const tem = document.getElementById("tema").value.trim();
+    const rec = document.getElementById("recursos").value.trim();
+
+    if (!doc || !gra || !sec) { toast("⚠️ Seleccione docente, grado y sección"); return; }
+    if (celdasSeleccionadas.length === 0) { toast("⚠️ Seleccione al menos una hora en la grilla"); return; }
+
+    // FIX: validación de rango para número de estudiantes
+    const est = parseInt(estVal, 10);
+    if (estVal !== "" && (isNaN(est) || est < 0 || est > 50)) {
+        toast("⚠️ Cantidad de estudiantes inválida (0-50)");
+        return;
+    }
+
     const updates = {};
     const hoy = new Date();
     const mesActual = hoy.toISOString().slice(0, 7);
+
     celdasSeleccionadas.forEach(c => {
         const key = db.ref().push().key;
-        updates[key] = { docente: doc, grado: gra, seccion: sec, estudiantes: est || "0", tema: tem || "Sin tema", recursos: rec || "Ninguno", dia: c.d, hora: c.h, mes: mesActual, fecha: hoy.toLocaleDateString('es-PE'), presento: tem ? "SI" : "NO", semId: semanaId };
+        updates[key] = {
+            docente: doc,
+            grado: gra,
+            seccion: sec,
+            estudiantes: isNaN(est) ? "0" : String(est),
+            tema: tem || "Sin tema",
+            recursos: rec || "Ninguno",
+            dia: c.d,
+            hora: c.h,
+            mes: mesActual,
+            fecha: hoy.toLocaleDateString('es-PE'),
+            presento: tem ? "SI" : "NO",
+            semId: semanaId
+        };
     });
-    db.ref('asistencias/' + semanaId).update(updates).then(() => { toast("✅ Registrado"); setTimeout(() => location.reload(), 800); });
+
+    db.ref('asistencias/' + semanaId).update(updates)
+        .then(() => {
+            toast("✅ Registrado correctamente");
+            setTimeout(() => location.reload(), 800);
+        })
+        .catch(err => {
+            console.error("Error al guardar:", err);
+            toast("❌ Error al guardar. Intente de nuevo.");
+        });
 }
 
 function checkAdmin() {
     let clave = prompt("Clave:");
-    if(clave === "Yarvin24") {
+    // AVISO DE SEGURIDAD: considera mover la autenticación a Firebase Auth
+    // para no exponer la clave en el código fuente.
+    if (clave === "Yarvin24") {
         document.getElementById("panelAdmin").style.display = "block";
         document.getElementById("mesFiltro").value = new Date().toISOString().slice(0, 7);
         generarReporteMensual();
+    } else if (clave !== null) {
+        toast("❌ Clave incorrecta");
     }
 }
 
 function generarReporteMensual() {
     const mesSel = document.getElementById("mesFiltro").value;
+    if (!mesSel) return;
+
     const cuerpo = document.getElementById("cuerpoTablaInforme");
-    cuerpo.innerHTML = ""; datosInforme = [];
+    cuerpo.innerHTML = "";
+
+    // FIX: limpiar datosInforme al inicio para evitar duplicados en el PDF
+    datosInforme = [];
+
     const conteo = {};
-    
+
     db.ref('asistencias').once('value', snap => {
         const todas = snap.val() || {};
         let i = 1;
-        
+
         Object.keys(todas).forEach(sId => {
             const semana = todas[sId];
+            if (!semana) return;
+
             Object.keys(semana).forEach(key => {
                 const reg = semana[key];
-                if(reg.mes === mesSel) {
-                    let etiqueta = "";
-                    const cargosEspeciales = ["DIRECTIVOS", "PSICÓLOGO (A)", "VISITA/PERSONAL EXTERNO"];
-                    
-                    if(cargosEspeciales.includes(reg.grado)) {
-                        etiqueta = reg.grado;
-                    } else {
-                        let partes = reg.docente.trim().split(' ');
-                        let nombre = "";
-                        // Si el nombre es corto como "DEYSI" toma la palabra 1, sino la 3 (nombre de pila)
-                        if(partes.length >= 3) { nombre = partes[2]; } 
-                        else { nombre = partes[0]; }
-                        etiqueta = nombre + " " + reg.grado + reg.seccion;
-                    }
-                    
-                    conteo[etiqueta] = (conteo[etiqueta] || 0) + 1;
-                    datosInforme.push({ ...reg, sId, key });
-                    
-                    cuerpo.innerHTML += `<tr>
-                        <td>${i++}</td>
-                        <td style="text-align:left">${reg.docente}</td>
-                        <td>${reg.presento}</td>
-                        <td style="text-align:left">${reg.tema}</td>
-                        <td style="text-align:left">${reg.recursos}</td>
-                        <td>${reg.grado}-${reg.seccion}</td>
-                        <td>${reg.estudiantes}</td>
-                        <td>${reg.fecha}</td>
-                        <td>${reg.hora}</td>
-                        <td><button class="btn-del" onclick="eliminarRegistro('${sId}', '${key}')">✖</button></td>
-                    </tr>`;
+                if (!reg || reg.mes !== mesSel) return;
+
+                let etiqueta = "";
+                const cargosEspeciales = ["DIRECTIVOS", "PSICÓLOGO (A)", "VISITA/PERSONAL EXTERNO"];
+
+                if (cargosEspeciales.includes(reg.grado)) {
+                    etiqueta = reg.grado;
+                } else {
+                    let partes = reg.docente.trim().split(' ');
+                    let nombre = partes.length >= 3 ? partes[2] : partes[0];
+                    etiqueta = nombre + " " + reg.grado + reg.seccion;
                 }
+
+                conteo[etiqueta] = (conteo[etiqueta] || 0) + 1;
+                datosInforme.push({ ...reg, sId, key });
+
+                cuerpo.innerHTML += `<tr>
+                    <td>${i++}</td>
+                    <td style="text-align:left">${reg.docente}</td>
+                    <td>${reg.presento}</td>
+                    <td style="text-align:left">${reg.tema}</td>
+                    <td style="text-align:left">${reg.recursos}</td>
+                    <td>${reg.grado}-${reg.seccion}</td>
+                    <td>${reg.estudiantes}</td>
+                    <td>${reg.fecha}</td>
+                    <td>${reg.hora}</td>
+                    <td><button class="btn-del" onclick="eliminarRegistro('${sId}', '${key}')">✖</button></td>
+                </tr>`;
             });
         });
+
         actualizarGrafico(conteo);
+    }).catch(err => {
+        console.error("Error al cargar datos:", err);
+        toast("❌ Error al cargar el reporte.");
     });
 }
 
 function actualizarGrafico(conteo) {
+    // FIX: verificar que ChartDataLabels esté disponible antes de usarlo
     const ctx = document.getElementById('graficoAsistencia').getContext('2d');
-    if(miChart) miChart.destroy();
-    
+    if (miChart) miChart.destroy();
+
     const etiquetas = Object.keys(conteo);
     const valores = Object.values(conteo);
-    if(etiquetas.length === 0) return;
+    if (etiquetas.length === 0) return;
 
     const total = valores.reduce((a, b) => a + b, 0);
-    const colores = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#009688', '#795548', '#607D8B', '#E91E63'];
+    const colores = ['#FF6384','#36A2EB','#FFCE56','#4BC0C0','#9966FF','#FF9F40','#009688','#795548','#607D8B','#E91E63'];
+
+    const plugins = []; 
+    const pluginOptions = { legend: { display: false } };
+
+    // FIX: solo registrar ChartDataLabels si está disponible
+    if (typeof ChartDataLabels !== 'undefined') {
+        plugins.push(ChartDataLabels);
+        pluginOptions.datalabels = {
+            anchor: 'end', align: 'top',
+            formatter: (v) => v + " (" + ((v / total) * 100).toFixed(1) + "%)",
+            font: { weight: 'bold', size: 10 }
+        };
+    }
 
     miChart = new Chart(ctx, {
         type: 'bar',
@@ -302,18 +398,11 @@ function actualizarGrafico(conteo) {
                 backgroundColor: colores.slice(0, etiquetas.length)
             }]
         },
-        plugins: [ChartDataLabels],
+        plugins: plugins,
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false },
-                datalabels: {
-                    anchor: 'end', align: 'top',
-                    formatter: (v) => v + " (" + ((v/total)*100).toFixed(1) + "%)",
-                    font: { weight: 'bold', size: 10 }
-                }
-            },
+            plugins: pluginOptions,
             scales: {
                 y: { beginAtZero: true },
                 x: { ticks: { font: { size: 10, weight: 'bold' } } }
@@ -323,14 +412,30 @@ function actualizarGrafico(conteo) {
 }
 
 function exportarPDF() {
+    if (datosInforme.length === 0) { toast("⚠️ No hay datos para exportar"); return; }
+
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF('l', 'mm', 'a4');
     const mes = document.getElementById("mesFiltro").value;
+
     doc.text("I.E. Nº 0162 SAN JOSÉ OBRERO - INFORME MENSUAL", 148, 15, { align: "center" });
-    const filas = datosInforme.map((r, i) => [i+1, r.docente, r.presento, r.tema, r.recursos, r.grado + "-" + r.seccion, r.estudiantes, r.fecha, r.hora]);
-    doc.autoTable({ startY: 25, head: [['N°', 'DOCENTE', 'SESIÓN', 'TEMA', 'RECURSOS', 'G-S', 'EST.', 'FECHA', 'HORA']], body: filas, theme: 'grid', styles: { fontSize: 7 } });
+
+    const filas = datosInforme.map((r, i) => [
+        i + 1, r.docente, r.presento, r.tema, r.recursos,
+        r.grado + "-" + r.seccion, r.estudiantes, r.fecha, r.hora
+    ]);
+
+    doc.autoTable({
+        startY: 25,
+        head: [['N°', 'DOCENTE', 'SESIÓN', 'TEMA', 'RECURSOS', 'G-S', 'EST.', 'FECHA', 'HORA']],
+        body: filas,
+        theme: 'grid',
+        styles: { fontSize: 7 }
+    });
+
     let finalY = doc.lastAutoTable.finalY + 10;
     if (finalY > 120) { doc.addPage(); finalY = 20; }
+
     doc.text("RESUMEN ESTADÍSTICO:", 14, finalY);
     const canvas = document.getElementById('graficoAsistencia');
     doc.addImage(canvas.toDataURL("image/png"), 'PNG', 15, finalY + 5, 260, 90);
@@ -338,30 +443,50 @@ function exportarPDF() {
 }
 
 function eliminarRegistro(sId, key) {
-    if(confirm("¿Eliminar?")) db.ref("asistencias/" + sId + "/" + key).remove().then(() => generarReporteMensual());
+    if (confirm("¿Eliminar este registro?")) {
+        db.ref("asistencias/" + sId + "/" + key).remove()
+            .then(() => {
+                toast("🗑️ Registro eliminado");
+                generarReporteMensual();
+            })
+            .catch(err => {
+                console.error("Error al eliminar:", err);
+                toast("❌ No se pudo eliminar.");
+            });
+    }
 }
 
 function toast(m) {
     const t = document.getElementById("toast");
-    t.textContent = m; t.className = "show";
+    t.textContent = m;
+    t.className = "show";
     setTimeout(() => t.className = "", 3000);
 }
 
+// FIX: un solo listener y una sola llamada a crearTabla
+// (antes había crearTabla() duplicado al final del script)
+crearTabla();
+
 db.ref('asistencias/' + semanaId).on('value', snap => {
-    const data = snap.val(); crearTabla();
-    if(!data) return;
+    const data = snap.val();
+    crearTabla(); // refrescar grilla con datos actuales
+
+    if (!data) return;
+
     Object.keys(data).forEach(key => {
         const reg = data[key];
-        const id = btoa(reg.dia + reg.hora).replace(/=/g, "");
+        if (!reg) return;
+
+        // FIX: usar la misma función generarId() para garantizar consistencia
+        const id = generarId(reg.dia, reg.hora);
         const el = document.getElementById(id);
-        if(el) { 
-            el.classList.add('ocupado'); 
-            el.style.background = "#1a73e8"; 
-            el.innerHTML = "<div style='color:white;'><b>" + reg.docente.split(' ')[0] + "</b><br>" + reg.grado + reg.seccion + "</div>"; 
+        if (el) {
+            el.classList.add('ocupado');
+            el.style.background = "#1a73e8";
+            el.innerHTML = "<div style='color:white;'><b>" + reg.docente.split(' ')[0] + "</b><br>" + reg.grado + reg.seccion + "</div>";
         }
     });
 });
-crearTabla();
 </script>
 </body>
 </html>
