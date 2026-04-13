@@ -36,7 +36,6 @@
         .panel-asistencia { background: #fef9e7; border: 1px solid #f9e79f; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 15px; }
         select, input { padding: 12px; border-radius: 8px; border: 2px solid #1a73e8; font-size: 14px; outline: none; background: white; width: 100%; }
-        /* FIX: validación visual para campo número */
         input[type="number"]:invalid { border-color: #e53935; }
         button { padding: 12px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
         .btn-success { background: #2e7d32; color: white; width: 100%; max-width: 400px; font-size: 16px; margin-top: 10px; }
@@ -68,7 +67,7 @@
 <div class="container">
     <img src="https://raw.githubusercontent.com/rreyesyangali-droid/reserva-crt/main/logo.jpg" class="logo" alt="Logo">
     <div class="subtitulo">REGISTRO DE ASISTENCIA AIP</div>
-    <div class="semana-info" id="semana-actual">📅 Registro de la Semana: 06-04-2026</div>
+    <div class="semana-info" id="semana-actual">📅 Cargando semana...</div>
 
     <div class="panel-asistencia">
         <div class="form-grid">
@@ -121,7 +120,6 @@
                 <option>DIRECTIVOS</option><option>PSICÓLOGO (A)</option><option>VISITA/PERSONAL EXTERNO</option>
                 <option>A</option><option>B</option><option>C</option><option>D</option><option>E</option>
             </select>
-            <!-- FIX: validación min/max para estudiantes -->
             <input type="number" id="estudiantes" placeholder="Cant. Estudiantes" min="0" max="50">
         </div>
         <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
@@ -165,22 +163,6 @@
 <div id="toast"></div>
 
 <script>
-// ============================================================
-// CONFIGURACIÓN FIREBASE
-// Nota: el apiKey es visible en el cliente (esto es normal en
-// Firebase web). La seguridad real se gestiona en las REGLAS
-// de Firebase Realtime Database. Configúralas en:
-// Firebase Console → Realtime Database → Reglas
-// Ejemplo de reglas recomendadas:
-// {
-//   "rules": {
-//     "asistencias": {
-//       ".read": false,
-//       ".write": true
-//     }
-//   }
-// }
-// ============================================================
 const firebaseConfig = {
     apiKey: "AIzaSyAtUo0_SaYsJYhBSJ-CwW1GU1Y4Iemq92M",
     authDomain: "reserva-crt.firebaseapp.com",
@@ -190,7 +172,37 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-const semanaId = "2026-04-06";
+// ===== CALCULAR SEMANA ACTUAL DINÁMICAMENTE =====
+function obtenerLunesDeSemana(fecha) {
+    const d = new Date(fecha);
+    const dia = d.getDay(); // 0=dom, 1=lun ... 6=sab
+    const diff = (dia === 0) ? -6 : 1 - dia; // si domingo, retroceder 6; si otro día, ir al lunes
+    d.setDate(d.getDate() + diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
+
+function formatFecha(d) {
+    return d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0');
+}
+
+function formatFechaCorta(d) {
+    return String(d.getDate()).padStart(2, '0') + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        d.getFullYear();
+}
+
+const lunes = obtenerLunesDeSemana(new Date());
+const viernes = new Date(lunes);
+viernes.setDate(lunes.getDate() + 4);
+
+const semanaId = formatFecha(lunes); // ej: "2026-04-13"
+
+document.getElementById("semana-actual").textContent =
+    "📅 Semana: " + formatFechaCorta(lunes) + " al " + formatFechaCorta(viernes);
+
 const horas = ["07:45 - 08:30", "08:30 - 09:15", "09:15 - 10:00", "RECREO", "10:30 - 11:15", "11:15 - 12:00", "12:00 - 12:45"];
 const dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 const breakLetras = ["B", "R", "E", "A", "K"];
@@ -198,12 +210,10 @@ let celdasSeleccionadas = [];
 let miChart = null;
 let datosInforme = [];
 
-// FIX: función segura para generar IDs desde texto con tildes y caracteres especiales
 function generarId(dia, hora) {
     try {
         return btoa(unescape(encodeURIComponent(dia + hora))).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
     } catch(e) {
-        // Fallback: usar hash simple si btoa falla
         return (dia + hora).split('').reduce((acc, c) => acc + c.charCodeAt(0), 0).toString();
     }
 }
@@ -218,7 +228,6 @@ function crearTabla() {
             if (h === "RECREO") {
                 html += `<div class="celda recreo">${breakLetras[i]}</div>`;
             } else {
-                // FIX: usar generarId en vez de btoa directo
                 const id = generarId(d, h);
                 html += `<div class="celda" id="${id}" onclick="manejarClickCelda('${id}', '${d}', '${h}')"></div>`;
             }
@@ -251,7 +260,6 @@ function registrarAsistencia() {
     if (!doc || !gra || !sec) { toast("⚠️ Seleccione docente, grado y sección"); return; }
     if (celdasSeleccionadas.length === 0) { toast("⚠️ Seleccione al menos una hora en la grilla"); return; }
 
-    // FIX: validación de rango para número de estudiantes
     const est = parseInt(estVal, 10);
     if (estVal !== "" && (isNaN(est) || est < 0 || est > 50)) {
         toast("⚠️ Cantidad de estudiantes inválida (0-50)");
@@ -283,7 +291,7 @@ function registrarAsistencia() {
     db.ref('asistencias/' + semanaId).update(updates)
         .then(() => {
             toast("✅ Registrado correctamente");
-            setTimeout(() => location.reload(), 800);
+            celdasSeleccionadas = [];
         })
         .catch(err => {
             console.error("Error al guardar:", err);
@@ -293,8 +301,6 @@ function registrarAsistencia() {
 
 function checkAdmin() {
     let clave = prompt("Clave:");
-    // AVISO DE SEGURIDAD: considera mover la autenticación a Firebase Auth
-    // para no exponer la clave en el código fuente.
     if (clave === "Yarvin24") {
         document.getElementById("panelAdmin").style.display = "block";
         document.getElementById("mesFiltro").value = new Date().toISOString().slice(0, 7);
@@ -309,15 +315,13 @@ function generarReporteMensual() {
     if (!mesSel) return;
 
     const cuerpo = document.getElementById("cuerpoTablaInforme");
-    cuerpo.innerHTML = "";
-
-    // FIX: limpiar datosInforme al inicio para evitar duplicados en el PDF
+    cuerpo.innerHTML = "<tr><td colspan='10' style='text-align:center;padding:20px;color:#aaa'>⏳ Cargando...</td></tr>";
     datosInforme = [];
-
     const conteo = {};
 
     db.ref('asistencias').once('value', snap => {
         const todas = snap.val() || {};
+        cuerpo.innerHTML = "";
         let i = 1;
 
         Object.keys(todas).forEach(sId => {
@@ -357,6 +361,10 @@ function generarReporteMensual() {
             });
         });
 
+        if (i === 1) {
+            cuerpo.innerHTML = "<tr><td colspan='10' style='text-align:center;padding:20px;color:#aaa'>📭 No hay registros para este mes</td></tr>";
+        }
+
         actualizarGrafico(conteo);
     }).catch(err => {
         console.error("Error al cargar datos:", err);
@@ -365,7 +373,6 @@ function generarReporteMensual() {
 }
 
 function actualizarGrafico(conteo) {
-    // FIX: verificar que ChartDataLabels esté disponible antes de usarlo
     const ctx = document.getElementById('graficoAsistencia').getContext('2d');
     if (miChart) miChart.destroy();
 
@@ -376,10 +383,9 @@ function actualizarGrafico(conteo) {
     const total = valores.reduce((a, b) => a + b, 0);
     const colores = ['#FF6384','#36A2EB','#FFCE56','#4BC0C0','#9966FF','#FF9F40','#009688','#795548','#607D8B','#E91E63'];
 
-    const plugins = []; 
+    const plugins = [];
     const pluginOptions = { legend: { display: false } };
 
-    // FIX: solo registrar ChartDataLabels si está disponible
     if (typeof ChartDataLabels !== 'undefined') {
         plugins.push(ChartDataLabels);
         pluginOptions.datalabels = {
@@ -418,7 +424,7 @@ function exportarPDF() {
     const doc = new jsPDF('l', 'mm', 'a4');
     const mes = document.getElementById("mesFiltro").value;
 
-    doc.text("I.E. Nº 0162 SAN JOSÉ OBRERO - INFORME MENSUAL", 148, 15, { align: "center" });
+    doc.text("I.E. Nº 0162 SAN JOSÉ OBRERO - INFORME MENSUAL AIP", 148, 15, { align: "center" });
 
     const filas = datosInforme.map((r, i) => [
         i + 1, r.docente, r.presento, r.tema, r.recursos,
@@ -443,17 +449,20 @@ function exportarPDF() {
 }
 
 function eliminarRegistro(sId, key) {
-    if (confirm("¿Eliminar este registro?")) {
-        db.ref("asistencias/" + sId + "/" + key).remove()
-            .then(() => {
-                toast("🗑️ Registro eliminado");
-                generarReporteMensual();
-            })
-            .catch(err => {
-                console.error("Error al eliminar:", err);
-                toast("❌ No se pudo eliminar.");
-            });
-    }
+    const pass = prompt("🔐 Ingrese clave de administrador para eliminar:");
+    if (!pass) return;
+    if (pass !== "Yarvin24") { alert("❌ Clave incorrecta"); return; }
+    if (!confirm("¿Eliminar este registro?")) return;
+
+    db.ref("asistencias/" + sId + "/" + key).remove()
+        .then(() => {
+            toast("🗑️ Registro eliminado");
+            generarReporteMensual();
+        })
+        .catch(err => {
+            console.error("Error al eliminar:", err);
+            toast("❌ No se pudo eliminar.");
+        });
 }
 
 function toast(m) {
@@ -463,21 +472,19 @@ function toast(m) {
     setTimeout(() => t.className = "", 3000);
 }
 
-// FIX: un solo listener y una sola llamada a crearTabla
-// (antes había crearTabla() duplicado al final del script)
+// ===== INICIAR =====
 crearTabla();
 
 db.ref('asistencias/' + semanaId).on('value', snap => {
     const data = snap.val();
-    crearTabla(); // refrescar grilla con datos actuales
+    crearTabla();
+    celdasSeleccionadas = [];
 
     if (!data) return;
 
     Object.keys(data).forEach(key => {
         const reg = data[key];
         if (!reg) return;
-
-        // FIX: usar la misma función generarId() para garantizar consistencia
         const id = generarId(reg.dia, reg.hora);
         const el = document.getElementById(id);
         if (el) {
