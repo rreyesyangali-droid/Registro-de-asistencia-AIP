@@ -26,13 +26,70 @@
             100% { background-position: 0% 50%; }
         }
         .container { max-width: 1100px; margin: auto; background: rgba(255, 255, 255, 0.9); padding: 24px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; backdrop-filter: blur(5px); }
-        .logo { display: block; margin: auto; width: 120px; margin-bottom: 20px; }
+        .logo { display: block; margin: auto; width: 120px; margin-bottom: 12px; }
         .subtitulo { 
             font-family: Arial, Helvetica, sans-serif;
-            font-size: 26px; color: #1a73e8; margin-bottom: 25px; font-weight: 800; 
+            font-size: 26px; color: #1a73e8; margin-bottom: 10px; font-weight: 800; 
             text-transform: uppercase; letter-spacing: 1.5px;
             text-shadow: -1px -1px 0 #b3e5fc, 1px -1px 0 #b3e5fc, -1px 1px 0 #b3e5fc, 1px 1px 0 #b3e5fc;
         }
+
+        /* ===== INDICADOR DE CONEXIÓN ===== */
+        .estado-conexion {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 16px;
+            border-radius: 30px;
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 18px;
+            border: 1.5px solid transparent;
+            transition: all 0.4s ease;
+        }
+        .estado-conexion.conectado {
+            background: #e8f5e9;
+            color: #1b5e20;
+            border-color: #a5d6a7;
+        }
+        .estado-conexion.desconectado {
+            background: #ffebee;
+            color: #b71c1c;
+            border-color: #ef9a9a;
+        }
+        .estado-conexion.conectando {
+            background: #fff8e1;
+            color: #e65100;
+            border-color: #ffe082;
+        }
+        .punto-estado {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+        .conectado .punto-estado {
+            background: #2e7d32;
+            box-shadow: 0 0 0 3px rgba(46,125,50,0.25);
+            animation: pulsoVerde 1.8s infinite;
+        }
+        .desconectado .punto-estado {
+            background: #c62828;
+        }
+        .conectando .punto-estado {
+            background: #f57c00;
+            animation: pulsando 0.8s infinite alternate;
+        }
+        @keyframes pulsoVerde {
+            0%, 100% { box-shadow: 0 0 0 3px rgba(46,125,50,0.25); }
+            50% { box-shadow: 0 0 0 6px rgba(46,125,50,0.1); }
+        }
+        @keyframes pulsando {
+            from { opacity: 0.4; }
+            to { opacity: 1; }
+        }
+        /* ================================= */
+
         .panel-asistencia { background: #fef9e7; border: 1px solid #f9e79f; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 15px; }
         select, input { padding: 12px; border-radius: 8px; border: 2px solid #1a73e8; font-size: 14px; outline: none; background: white; width: 100%; }
@@ -49,6 +106,11 @@
         .seleccionada { border: 2px solid #1a73e8 !important; background: #e3f2fd !important; }
         .recreo { background: #fff3e0; color: #e65100; cursor: default; font-weight: 900; font-size: 28px; font-family: 'Arial Black', Gadget, sans-serif; }
         .ocupado { color: white; font-weight: bold; cursor: default; }
+
+        /* Colores especiales para opciones nuevas */
+        .celda-pip { background: #e8eaf6 !important; }
+        .celda-remota { background: #e0f7fa !important; }
+        .celda-feriado { background: #fce4ec !important; }
         
         #panelAdmin { margin-top: 40px; padding: 25px; background: #fff; border-radius: 15px; border: 2px dashed #1a73e8; display: none; text-align: left; }
         .filtro-mensual { margin: 15px 0; background: #f1f8ff; padding: 15px; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
@@ -69,63 +131,84 @@
         #toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 15px 30px; border-radius: 50px; display: none; z-index: 2000; font-weight: bold; }
         #toast.show { display: block; }
         .chart-container { position: relative; height: 350px; width: 100%; margin: 20px 0; padding: 10px; background: #fff; border: 1px solid #eee; }
+
+        optgroup { font-style: normal; font-weight: 700; font-size: 12px; color: #555; background: #f0f4ff; letter-spacing: 0.5px; }
+        optgroup option { font-weight: 400; font-size: 14px; color: #222; background: white; padding-left: 8px; }
     </style>
 </head>
 <body>
 <div class="container">
     <img src="https://raw.githubusercontent.com/rreyesyangali-droid/reserva-crt/main/logo.jpg" class="logo" alt="Logo">
     <div class="subtitulo">REGISTRO DE ASISTENCIA AIP</div>
+
+    <!-- INDICADOR DE CONEXIÓN FIREBASE -->
+    <div id="estadoConexion" class="estado-conexion conectando">
+        <span class="punto-estado"></span>
+        <span id="textoConexion">Conectando con Firebase...</span>
+    </div>
+
     <div class="semana-info" id="semana-actual">📅 Cargando semana...</div>
 
     <div class="panel-asistencia">
         <div class="form-grid">
             <select id="docente">
                 <option value="">Seleccione docente...</option>
-                <option>SEMINARIO HUERTA PILAR</option>
-                <option>SARANGO PEREZ MAGALY</option>
-                <option>DIOSES GARAY MILAGROS</option>
-                <option>CAISAHUANA MAYTA, FLOR DE MARIA</option>
-                <option>MENA MENDOZA PATRICIA</option>
-                <option>CONTRERAS CHANHUALLA SANDRA</option>
-                <option>PAUCAR FLORES BEATRIZ</option>
-                <option>LAZARES PEREZ ANA ROSALBINA</option>
-                <option>CARRASCO ARIAS ANA CECILIA</option>
-                <option>TASAYCO LUYO, LISSET KATHERINE</option>
-                <option>RODRIGUEZ MOLINA MARY LUZ</option>
-                <option>MALDONADO CUETO, PAOLA</option>
-                <option>PACHERRES LEON JUANA</option>
-                <option>CASTRO LLANTERHUAY KATHERIN</option>
-                <option>TARMEÑO PASCO JAVIER</option>
-                <option>QUISPE CCUNO MARTHA</option>
-                <option>PAUCARCAJA RICSE FELIX</option>
-                <option>MALASQUEZ CHUMPITAZI OFELIA</option>
-                <option>CAMPOS MARTOS MILAGROS</option>
-                <option>CABRERA GUERRA BETHY</option>
-                <option>CASTRO BARDALES MARGOT</option>
-                <option>MENDOZA PAREJA NICOLAS</option>
-                <option>ALCANTARA SANDOVAL JOSE</option>
-                <option>CUEVA CARDENAS ROGER</option>
-                <option>BRAVO RAYMONDI MARISOL</option>
-                <option>JIMENEZ BONIFACIO, ROSAMEL</option>
-                <option>LIMACHE CORTEZ MARIA</option>
-                <option>CCAJMA QUISPE ELIZABETH</option>
-                <option>ZAMUDIO SOLORZANO DANIEL</option>
-                <option>PIÑAN ARIZA CARMEN</option>
-                <option>SOSA QUISPE EFRAIN</option>
-                <option>DEYSI</option>
-                <option>DIRECTIVOS</option>
-                <option>PSICÓLOGO (A)</option>
-                <option>DOCENTE DE SECUNDARIA</option>
-                <option>VISITA/PERSONAL EXTERNO</option>
+                <optgroup label="DOCENTES">
+                    <option>SEMINARIO HUERTA PILAR</option>
+                    <option>SARANGO PEREZ MAGALY</option>
+                    <option>DIOSES GARAY MILAGROS</option>
+                    <option>CAISAHUANA MAYTA, FLOR DE MARIA</option>
+                    <option>MENA MENDOZA PATRICIA</option>
+                    <option>CONTRERAS CHANHUALLA SANDRA</option>
+                    <option>PAUCAR FLORES BEATRIZ</option>
+                    <option>LAZARES PEREZ ANA ROSALBINA</option>
+                    <option>CARRASCO ARIAS ANA CECILIA</option>
+                    <option>TASAYCO LUYO, LISSET KATHERINE</option>
+                    <option>RODRIGUEZ MOLINA MARY LUZ</option>
+                    <option>MALDONADO CUETO, PAOLA</option>
+                    <option>PACHERRES LEON JUANA</option>
+                    <option>CASTRO LLANTERHUAY KATHERIN</option>
+                    <option>TARMEÑO PASCO JAVIER</option>
+                    <option>QUISPE CCUNO MARTHA</option>
+                    <option>PAUCARCAJA RICSE FELIX</option>
+                    <option>MALASQUEZ CHUMPITAZI OFELIA</option>
+                    <option>CAMPOS MARTOS MILAGROS</option>
+                    <option>CABRERA GUERRA BETHY</option>
+                    <option>CASTRO BARDALES MARGOT</option>
+                    <option>MENDOZA PAREJA NICOLAS</option>
+                    <option>ALCANTARA SANDOVAL JOSE</option>
+                    <option>CUEVA CARDENAS ROGER</option>
+                    <option>BRAVO RAYMONDI MARISOL</option>
+                    <option>JIMENEZ BONIFACIO, ROSAMEL</option>
+                    <option>LIMACHE CORTEZ MARIA</option>
+                    <option>CCAJMA QUISPE ELIZABETH</option>
+                    <option>ZAMUDIO SOLORZANO DANIEL</option>
+                    <option>PIÑAN ARIZA CARMEN</option>
+                    <option>SOSA QUISPE EFRAIN</option>
+                    <option>DEYSI</option>
+                </optgroup>
+                <optgroup label="OTROS">
+                    <option>DIRECTIVOS</option>
+                    <option>PSICÓLOGO (A)</option>
+                    <option>DOCENTE DE SECUNDARIA</option>
+                    <option>VISITA/PERSONAL EXTERNO</option>
+                </optgroup>
+                <optgroup label="ACTIVIDADES ESPECIALES">
+                    <option>ATENCIÓN A ESTUDIANTES-PIP</option>
+                    <option>CLASE REMOTA</option>
+                    <option>FERIADO</option>
+                </optgroup>
             </select>
             <select id="grado">
                 <option value="">Grado...</option>
                 <option>DIRECTIVOS</option><option>PSICÓLOGO (A)</option><option>VISITA/PERSONAL EXTERNO</option>
+                <option>ATENCIÓN A ESTUDIANTES-PIP</option><option>CLASE REMOTA</option><option>FERIADO</option>
                 <option>1°</option><option>2°</option><option>3°</option><option>4°</option><option>5°</option><option>6°</option>
             </select>
             <select id="seccion">
                 <option value="">Sección...</option>
                 <option>DIRECTIVOS</option><option>PSICÓLOGO (A)</option><option>VISITA/PERSONAL EXTERNO</option>
+                <option>ATENCIÓN A ESTUDIANTES-PIP</option><option>CLASE REMOTA</option><option>FERIADO</option>
                 <option>A</option><option>B</option><option>C</option><option>D</option><option>E</option>
             </select>
             <input type="number" id="estudiantes" placeholder="Cant. Estudiantes" min="0" max="50">
@@ -193,11 +276,25 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
+// ===== INDICADOR DE CONEXIÓN EN TIEMPO REAL =====
+const connectedRef = db.ref(".info/connected");
+connectedRef.on("value", (snap) => {
+    const el = document.getElementById("estadoConexion");
+    const texto = document.getElementById("textoConexion");
+    if (snap.val() === true) {
+        el.className = "estado-conexion conectado";
+        texto.textContent = "Firebase conectado";
+    } else {
+        el.className = "estado-conexion desconectado";
+        texto.textContent = "Sin conexión a Firebase";
+    }
+});
+
 // ===== CALCULAR SEMANA ACTUAL DINÁMICAMENTE =====
 function obtenerLunesDeSemana(fecha) {
     const d = new Date(fecha);
-    const dia = d.getDay(); // 0=dom, 1=lun ... 6=sab
-    const diff = (dia === 0) ? -6 : 1 - dia; // si domingo, retroceder 6; si otro día, ir al lunes
+    const dia = d.getDay();
+    const diff = (dia === 0) ? -6 : 1 - dia;
     d.setDate(d.getDate() + diff);
     d.setHours(0, 0, 0, 0);
     return d;
@@ -218,8 +315,7 @@ function formatFechaCorta(d) {
 const lunes = obtenerLunesDeSemana(new Date());
 const viernes = new Date(lunes);
 viernes.setDate(lunes.getDate() + 4);
-
-const semanaId = formatFecha(lunes); // ej: "2026-04-13"
+const semanaId = formatFecha(lunes);
 
 document.getElementById("semana-actual").textContent =
     "📅 Semana: " + formatFechaCorta(lunes) + " al " + formatFechaCorta(viernes);
@@ -227,6 +323,15 @@ document.getElementById("semana-actual").textContent =
 const horas = ["07:45 - 08:30", "08:30 - 09:15", "09:15 - 10:00", "RECREO", "10:30 - 11:15", "11:15 - 12:00", "12:00 - 12:45"];
 const dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 const breakLetras = ["B", "R", "E", "A", "K"];
+
+// Actividades especiales para estilo diferenciado en la grilla
+const ACTIVIDADES_ESPECIALES = ["ATENCIÓN A ESTUDIANTES-PIP", "CLASE REMOTA", "FERIADO"];
+const COLORES_ESPECIALES = {
+    "ATENCIÓN A ESTUDIANTES-PIP": { bg: "#3949ab", label: "PIP" },
+    "CLASE REMOTA": { bg: "#00838f", label: "REMOTA" },
+    "FERIADO": { bg: "#c62828", label: "FERIADO" }
+};
+
 let celdasSeleccionadas = [];
 let miChart = null;
 let datosInforme = [];
@@ -345,7 +450,6 @@ function generarReporteMensual() {
         cuerpo.innerHTML = "";
         let i = 1;
 
-        // Agrupar por docente + fecha + tema para evitar duplicados
         const agrupado = {};
 
         Object.keys(todas).forEach(sId => {
@@ -368,7 +472,7 @@ function generarReporteMensual() {
 
         Object.values(agrupado).forEach(reg => {
             let etiqueta = "";
-            const cargosEspeciales = ["DIRECTIVOS", "PSICÓLOGO (A)", "VISITA/PERSONAL EXTERNO"];
+            const cargosEspeciales = ["DIRECTIVOS", "PSICÓLOGO (A)", "VISITA/PERSONAL EXTERNO", "ATENCIÓN A ESTUDIANTES-PIP", "CLASE REMOTA", "FERIADO"];
             if (cargosEspeciales.includes(reg.grado)) {
                 etiqueta = reg.grado;
             } else {
@@ -389,7 +493,13 @@ function generarReporteMensual() {
             const gs = (seccion === '—') ? grado : `${grado} ${seccion}`;
             const horasTexto = reg.horas ? reg.horas.sort().join(', ') : (reg.hora || '—');
 
-            cuerpo.innerHTML += `<tr>
+            // Estilo especial para actividades especiales en la tabla
+            let rowStyle = "";
+            if (reg.docente === "ATENCIÓN A ESTUDIANTES-PIP") rowStyle = "background:#e8eaf6;";
+            else if (reg.docente === "CLASE REMOTA") rowStyle = "background:#e0f7fa;";
+            else if (reg.docente === "FERIADO") rowStyle = "background:#fce4ec;";
+
+            cuerpo.innerHTML += `<tr style="${rowStyle}">
                 <td><b>${i++}</b></td>
                 <td style="text-align:left;font-weight:600">${reg.docente}</td>
                 <td style="color:${presento==='SI'?'#2e7d32':'#c62828'};font-weight:bold">${presento}</td>
@@ -534,8 +644,16 @@ db.ref('asistencias/' + semanaId).on('value', snap => {
         const el = document.getElementById(id);
         if (el) {
             el.classList.add('ocupado');
-            el.style.background = "#1a73e8";
-            el.innerHTML = "<div style='color:white;'><b>" + reg.docente.split(' ')[0] + "</b><br>" + reg.grado + reg.seccion + "</div>";
+
+            // Color diferenciado para actividades especiales en la grilla
+            const especial = COLORES_ESPECIALES[reg.docente];
+            if (especial) {
+                el.style.background = especial.bg;
+                el.innerHTML = `<div style='color:white;font-weight:bold;font-size:12px;'>${especial.label}</div>`;
+            } else {
+                el.style.background = "#1a73e8";
+                el.innerHTML = "<div style='color:white;'><b>" + reg.docente.split(' ')[0] + "</b><br>" + reg.grado + reg.seccion + "</div>";
+            }
         }
     });
 });
