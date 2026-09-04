@@ -1,0 +1,1395 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro de Asistencia AIP</title>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    
+    <style>
+        * { box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; padding: 20px;
+            background: linear-gradient(-45deg, #e3f2fd, #bbdefb, #fff9c4, #f8bbd0);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+        }
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        .container { max-width: 1100px; margin: auto; background: rgba(255, 255, 255, 0.9); padding: 24px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; backdrop-filter: blur(5px); }
+        .logo { display: block; margin: auto; width: 120px; margin-bottom: 12px; }
+        .subtitulo { 
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 26px; color: #1a73e8; margin-bottom: 10px; font-weight: 800; 
+            text-transform: uppercase; letter-spacing: 1.5px;
+            text-shadow: -1px -1px 0 #b3e5fc, 1px -1px 0 #b3e5fc, -1px 1px 0 #b3e5fc, 1px 1px 0 #b3e5fc;
+        }
+
+        /* ===== INDICADOR DE CONEXIÓN ===== */
+        .estado-conexion {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 16px;
+            border-radius: 30px;
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 18px;
+            border: 1.5px solid transparent;
+            transition: all 0.4s ease;
+        }
+        .estado-conexion.conectado {
+            background: #e8f5e9;
+            color: #1b5e20;
+            border-color: #a5d6a7;
+        }
+        .estado-conexion.desconectado {
+            background: #ffebee;
+            color: #b71c1c;
+            border-color: #ef9a9a;
+        }
+        .estado-conexion.conectando {
+            background: #fff8e1;
+            color: #e65100;
+            border-color: #ffe082;
+        }
+        .punto-estado {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+        .conectado .punto-estado {
+            background: #2e7d32;
+            box-shadow: 0 0 0 3px rgba(46,125,50,0.25);
+            animation: pulsoVerde 1.8s infinite;
+        }
+        .desconectado .punto-estado {
+            background: #c62828;
+        }
+        .conectando .punto-estado {
+            background: #f57c00;
+            animation: pulsando 0.8s infinite alternate;
+        }
+        @keyframes pulsoVerde {
+            0%, 100% { box-shadow: 0 0 0 3px rgba(46,125,50,0.25); }
+            50% { box-shadow: 0 0 0 6px rgba(46,125,50,0.1); }
+        }
+        @keyframes pulsando {
+            from { opacity: 0.4; }
+            to { opacity: 1; }
+        }
+        /* ================================= */
+
+        /* ===== PANEL PÚBLICO: ESTADO DE INGRESO A AIP ===== */
+        .estado-publico { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+        .estado-col { flex: 1; min-width: 260px; background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); text-align: left; max-height: 260px; overflow-y: auto; }
+        .estado-col.si { border: 1.5px solid #a5d6a7; }
+        .estado-col.no { border: 1.5px solid #ef9a9a; }
+        .estado-col h4 { margin: 0 0 10px; text-align: center; font-size: 14px; }
+        .estado-col.si h4 { color: #1b5e20; }
+        .estado-col.no h4 { color: #b71c1c; }
+        .estado-col ul { list-style: none; margin: 0; padding: 0; }
+        .estado-col li { padding: 6px 10px; border-radius: 6px; font-size: 12.5px; margin-bottom: 4px; }
+        .estado-col.si li { background: #e8f5e9; color: #1b5e20; }
+        .estado-col.no li { background: #ffebee; color: #b71c1c; font-weight: 700; }
+        .estado-col li.vacio { background: transparent; color: #999; font-weight: 400; text-align: center; }
+        .estado-col .marca { font-weight: 400; font-size: 10.5px; color: #7a1f1f; display: block; }
+        /* ================================================= */
+
+        .panel-asistencia { background: #fef9e7; border: 1px solid #f9e79f; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 15px; }
+        select, input { padding: 12px; border-radius: 8px; border: 2px solid #1a73e8; font-size: 14px; outline: none; background: white; width: 100%; }
+        input[type="number"]:invalid { border-color: #e53935; }
+        button { padding: 12px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        .btn-success { background: #2e7d32; color: white; width: 100%; max-width: 400px; font-size: 16px; margin-top: 10px; }
+        .btn-success:hover { background: #1b5e20; transform: translateY(-2px); }
+        .semana-info { background: #e8f0fe; padding: 10px 20px; border-radius: 30px; display: inline-block; margin-bottom: 20px; font-size: 15px; color: #1a73e8; font-weight: bold; border: 1px solid #bbdefb; }
+        .grid-wrapper { overflow-x: auto; margin-top: 20px; border-radius: 10px; border: 1px solid #ddd; }
+        .grid { display: grid; grid-template-columns: 140px repeat(5, 1fr); gap: 5px; min-width: 800px; padding: 10px; background: #f9f9f9; }
+        .header { background: #1a73e8; color: white; font-weight: bold; padding: 12px; border-radius: 5px; }
+        .hora { background: #e3f2fd; padding: 10px; font-weight: bold; border-radius: 5px; font-size: 12px; color: #0d47a1; display: flex; align-items: center; justify-content: center; }
+        .celda { min-height: 85px; display: flex; flex-direction: column; justify-content: center; align-items: center; border: 1px solid #eee; border-radius: 5px; background: white; cursor: pointer; padding: 5px; text-align: center; font-size: 11px; transition: 0.2s; }
+        .seleccionada { border: 2px solid #1a73e8 !important; background: #e3f2fd !important; }
+        .recreo { background: #fff3e0; color: #e65100; cursor: default; font-weight: 900; font-size: 28px; font-family: 'Arial Black', Gadget, sans-serif; }
+        .ocupado { color: white; font-weight: bold; cursor: default; }
+
+        /* Colores especiales para opciones nuevas */
+        .celda-pip { background: #e8eaf6 !important; }
+        .celda-remota { background: #e0f7fa !important; }
+        .celda-feriado { background: #fce4ec !important; }
+        
+        #panelAdmin { margin-top: 40px; padding: 25px; background: #fff; border-radius: 15px; border: 2px dashed #1a73e8; display: none; text-align: left; }
+        .filtro-mensual { margin: 15px 0; background: #f1f8ff; padding: 15px; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+        .historial-diario { margin-top: 20px; overflow-x: auto; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; min-width: 900px; }
+        thead tr { background: #00897b; }
+        th { background: #00897b; color: white; padding: 13px 10px; position: sticky; top: 0; z-index: 10; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; border-right: 1px solid rgba(255,255,255,0.2); }
+        th:last-child { border-right: none; }
+        td { padding: 10px; border-bottom: 1px solid #f0f0f0; text-align: center; color: #333; border-right: 1px solid #f0f0f0; font-size: 11.5px; }
+        td:last-child { border-right: none; }
+        tr:nth-child(even) td { background: #f9f9f9; }
+        tr:hover td { background: #e8f5e9; transition: 0.15s; }
+        .badge-sesion-si { background: #e8f5e9; color: #2e7d32; padding: 3px 10px; border-radius: 12px; font-weight: 700; font-size: 11px; }
+        .badge-sesion-no { background: #fce4ec; color: #c62828; padding: 3px 10px; border-radius: 12px; font-weight: 700; font-size: 11px; }
+        .badge-gs { background: #e3f2fd; color: #1565c0; padding: 3px 8px; border-radius: 10px; font-weight: 700; font-size: 11px; }
+        .btn-pdf { background: #c62828; color: white; cursor: pointer; }
+        .btn-del { background: #ff5252; color: white; padding: 5px 8px; font-size: 10px; border-radius: 4px; cursor: pointer; }
+        .btn-editar-sesion { padding: 4px 12px; border-radius: 12px; border: 2px solid transparent; font-weight: 700; font-size: 11px; cursor: pointer; transition: all 0.2s; }
+        .btn-editar-sesion.sesion-si { background: #e8f5e9; color: #2e7d32; border-color: #a5d6a7; }
+        .btn-editar-sesion.sesion-si:hover { background: #c62828; color: white; border-color: #c62828; }
+        .btn-editar-sesion.sesion-no { background: #fce4ec; color: #c62828; border-color: #ef9a9a; }
+        .btn-editar-sesion.sesion-no:hover { background: #2e7d32; color: white; border-color: #2e7d32; }
+        #toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 15px 30px; border-radius: 50px; display: none; z-index: 2000; font-weight: bold; }
+        #toast.show { display: block; }
+        .chart-container { position: relative; height: 350px; width: 100%; margin: 20px 0; padding: 10px; background: #fff; border: 1px solid #eee; }
+
+        optgroup { font-style: normal; font-weight: 700; font-size: 12px; color: #555; background: #f0f4ff; letter-spacing: 0.5px; }
+        optgroup option { font-weight: 400; font-size: 14px; color: #222; background: white; padding-left: 8px; }
+
+        /* ===== BOTONES PRESENTÓ SESIÓN ===== */
+        .presento-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin: 12px 0 6px;
+            background: #f1f8ff;
+            border: 1.5px solid #bbdefb;
+            border-radius: 10px;
+            padding: 12px 20px;
+            flex-wrap: wrap;
+        }
+        .presento-label {
+            font-size: 14px;
+            font-weight: 700;
+            color: #1a73e8;
+        }
+        .btn-presento {
+            padding: 9px 22px;
+            border-radius: 30px;
+            border: 2px solid #ccc;
+            background: #f5f5f5;
+            color: #777;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.25s;
+        }
+        .btn-presento:hover { transform: translateY(-1px); }
+        .btn-presento.activo-si {
+            background: #2e7d32;
+            border-color: #2e7d32;
+            color: white;
+            box-shadow: 0 3px 10px rgba(46,125,50,0.35);
+        }
+        .btn-presento.activo-no {
+            background: #c62828;
+            border-color: #c62828;
+            color: white;
+            box-shadow: 0 3px 10px rgba(198,40,40,0.35);
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <img src="https://raw.githubusercontent.com/rreyesyangali-droid/reserva-crt/main/logo.jpg" class="logo" alt="Logo">
+    <div class="subtitulo">REGISTRO DE ASISTENCIA AIP</div>
+
+    <!-- INDICADOR DE CONEXIÓN FIREBASE -->
+    <div id="estadoConexion" class="estado-conexion conectando">
+        <span class="punto-estado"></span>
+        <span id="textoConexion">Conectando con Firebase...</span>
+    </div>
+
+    <div class="semana-info" id="semana-actual">📅 Cargando semana...</div>
+
+    <div class="estado-publico" id="estadoPublico">
+        <div class="estado-col si"><h4>✅ Ingresaron este mes</h4><ul><li class="vacio">Cargando...</li></ul></div>
+        <div class="estado-col no"><h4>❌ Aún no ingresan este mes</h4><ul><li class="vacio">Cargando...</li></ul></div>
+    </div>
+
+    <div class="panel-asistencia">
+        <div class="form-grid">
+            <select id="docente">
+                <option value="">Seleccione docente...</option>
+                <optgroup label="DOCENTES">
+                    <option>SEMINARIO HUERTA PILAR</option>
+                    <option>SARANGO PEREZ MAGALY</option>
+                    <option>DIOSES GARAY MILAGROS</option>
+                    <option>CAISAHUANA MAYTA, FLOR DE MARIA</option>
+                    <option>MENA MENDOZA PATRICIA</option>
+                    <option>CONTRERAS CHANHUALLA SANDRA</option>
+                    <option>PAUCAR FLORES BEATRIZ</option>
+                    <option>LAZARES PEREZ ANA ROSALBINA</option>
+                    <option>CARRASCO ARIAS ANA CECILIA</option>
+                    <option>TASAYCO LUYO, LISSET KATHERINE</option>
+                    <option>RODRIGUEZ MOLINA MARY LUZ</option>
+                    <option>MALDONADO CUETO, PAOLA</option>
+                    <option>PACHERRES LEON JUANA</option>
+                    <option>CASTRO LLANTERHUAY KATHERIN</option>
+                    <option>TARMEÑO PASCO JAVIER</option>
+                    <option>QUISPE CCUNO MARTHA</option>
+                    <option>PAUCARCAJA RICSE FELIX</option>
+                    <option>MALASQUEZ CHUMPITAZI OFELIA</option>
+                    <option>CAMPOS MARTOS MILAGROS</option>
+                    <option>CABRERA GUERRA BETHY</option>
+                    <option>CASTRO BARDALES MARGOT</option>
+                    <option>MENDOZA PAREJA NICOLAS</option>
+                    <option>ALCANTARA SANDOVAL JOSE</option>
+                    <option>CUEVA CARDENAS ROGER</option>
+                    <option>BRAVO RAYMONDI MARISOL</option>
+                    <option>JIMENEZ BONIFACIO, ROSAMEL</option>
+                    <option>LIMACHE CORTEZ MARIA</option>
+                    <option>CCAJMA QUISPE ELIZABETH</option>
+                    <option>ZAMUDIO SOLORZANO DANIEL</option>
+                    <option>PIÑAN ARIZA CARMEN</option>
+                    <option>SOSA QUISPE EFRAIN</option>
+                </optgroup>
+                <optgroup label="OTROS">
+                    <option>DIRECTIVOS</option>
+                    <option>PSICÓLOGO (A)</option>
+                    <option>DOCENTE DE SECUNDARIA</option>
+                    <option>VISITA/PERSONAL EXTERNO</option>
+                </optgroup>
+                <optgroup label="ACTIVIDADES ESPECIALES">
+                    <option>ATENCIÓN A ESTUDIANTES-PIP</option>
+                    <option>CLASE REMOTA</option>
+                    <option>FERIADO</option>
+                </optgroup>
+                <optgroup label="ACTIVIDADES INSTITUCIONALES">
+                    <option>ACTIVIDADES INSTITUCIONALES</option>
+                </optgroup>
+            </select>
+            <select id="grado">
+                <option value="">Grado...</option>
+                <option>DIRECTIVOS</option><option>PSICÓLOGO (A)</option><option>VISITA/PERSONAL EXTERNO</option>
+                <option>ATENCIÓN A ESTUDIANTES-PIP</option><option>CLASE REMOTA</option><option>FERIADO</option>
+                <option>ACTIVIDADES INSTITUCIONALES</option>
+                <option>1°</option><option>2°</option><option>3°</option><option>4°</option><option>5°</option><option>6°</option>
+            </select>
+            <select id="seccion">
+                <option value="">Sección...</option>
+                <option>DIRECTIVOS</option><option>PSICÓLOGO (A)</option><option>VISITA/PERSONAL EXTERNO</option>
+                <option>ATENCIÓN A ESTUDIANTES-PIP</option><option>CLASE REMOTA</option><option>FERIADO</option>
+                <option>ACTIVIDADES INSTITUCIONALES</option>
+                <option>A</option><option>B</option><option>C</option><option>D</option><option>E</option>
+            </select>
+            <input type="number" id="estudiantes" placeholder="Cant. Estudiantes" min="0" max="50">
+        </div>
+        <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
+            <input type="text" id="tema" placeholder="Tema de la sesión de aprendizaje">
+            <input type="text" id="recursos" placeholder="Recursos TIC utilizados">
+        </div>
+        <div class="presento-container">
+            <span class="presento-label">📋 ¿Presentó su sesión?</span>
+            <button type="button" class="btn-presento activo-si" id="btnSi" onclick="selPresento('SI')">✅ SÍ</button>
+            <button type="button" class="btn-presento" id="btnNo" onclick="selPresento('NO')">❌ NO</button>
+        </div>
+        <button class="btn-success" onclick="registrarAsistencia()">✅ REGISTRO DE ASISTENCIA</button>
+    </div>
+
+    <div class="grid-wrapper">
+        <div class="grid" id="tabla"></div>
+    </div>
+
+    <div style="margin-top: 50px; border-top: 1px solid #ddd; padding-top: 20px;">
+        <button onclick="checkAdmin()" style="background:none; border:none; color:#999; cursor:pointer; font-size: 14px; font-weight: bold;">🔐 Acceso Docente PIP - Primaria</button>
+    </div>
+
+    <div id="panelAdmin">
+        <h3 style="color: #1a73e8; text-align: center;">📈 Informes y Estadísticas del Mes</h3>
+        <div class="filtro-mensual">
+            <label>Seleccionar Mes: </label>
+            <input type="month" id="mesFiltro" onchange="generarReporteMensual()">
+            <button class="btn-pdf" id="btnDescargar" onclick="exportarPDF()">📕 Descargar Informe PDF</button>
+        </div>
+
+        <!-- ===== REGISTRO MANUAL: DOCENTES QUE NO INGRESARON ===== -->
+        <div style="background:#fff3f3;border:1px solid #ffcdd2;border-radius:12px;padding:18px;margin-bottom:24px;">
+            <h4 style="text-align:center;color:#c62828;margin:0 0 12px;">🚫 Registrar Docente que NO Ingresó a AIP</h4>
+            <p style="text-align:center;font-size:12.5px;color:#c62828;margin:0 0 12px;">👆 Primero haz clic en la hora de la grilla (arriba) en la que la profesora no ingresó, luego completa estos datos:</p>
+            <div class="form-grid" style="grid-template-columns: 2fr 1fr 1fr 1.4fr 1.6fr auto;">
+                <select id="docenteNoIngreso">
+                    <option value="">Seleccione docente...</option>
+                </select>
+                <select id="gradoNoIngreso">
+                    <option value="">Grado...</option>
+                    <option>1°</option><option>2°</option><option>3°</option><option>4°</option><option>5°</option><option>6°</option>
+                </select>
+                <select id="seccionNoIngreso">
+                    <option value="">Sección...</option>
+                    <option>A</option><option>B</option><option>C</option><option>D</option><option>E</option>
+                </select>
+                <input type="date" id="fechaNoIngreso">
+                <input type="text" id="motivoNoIngreso" placeholder="Motivo (opcional)">
+                <button class="btn-pdf" style="background:#c62828;" onclick="registrarNoIngreso()">🚫 Registrar</button>
+            </div>
+            <div class="historial-diario" style="margin-top:16px;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width:40px">N°</th>
+                            <th>DOCENTE</th>
+                            <th style="width:110px">FECHA</th>
+                            <th>MOTIVO</th>
+                            <th style="width:70px">ACCIÓN</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpoTablaNoIngreso">
+                        <tr><td colspan="5" style="text-align:center;padding:14px;color:#aaa">Seleccione un mes arriba para ver los registros</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- GRÁFICO CIRCULAR POR GRADO -->
+        <div style="background:#f8fbff;border:1px solid #bbdefb;border-radius:12px;padding:20px;margin-bottom:24px;">
+            <h4 style="text-align:center;color:#1a73e8;margin:0 0 14px;">🎓 Distribución de Sesiones por Grado</h4>
+            <div style="display:flex;align-items:center;justify-content:center;gap:30px;flex-wrap:wrap;">
+                <div style="position:relative;width:220px;height:220px;flex-shrink:0;">
+                    <canvas id="graficoGrado"></canvas>
+                </div>
+                <div id="leyendaGrado" style="display:flex;flex-direction:column;gap:7px;font-size:13px;"></div>
+            </div>
+        </div>
+
+        <!-- GRÁFICOS CIRCULARES POR DOCENTE -->
+        <div style="background:#f8fff8;border:1px solid #c8e6c9;border-radius:12px;padding:20px;margin-bottom:24px;">
+            <h4 style="text-align:center;color:#2e7d32;margin:0 0 6px;">👩‍🏫 Cumplimiento por Docente <span style="font-size:12px;color:#888;font-weight:400;">(meta: 4 visitas/mes)</span></h4>
+            <div id="graficoDocentes" style="display:flex;flex-wrap:wrap;gap:18px;justify-content:center;padding-top:10px;"></div>
+        </div>
+
+        <!-- canvas oculto para PDF (gráfico de barras legacy) -->
+        <canvas id="graficoAsistencia" style="display:none;height:1px;"></canvas>
+        <div class="historial-diario">
+            <table id="tablaInforme">
+                <thead>
+                    <tr>
+                        <th style="width:40px">N°</th>
+                        <th style="width:200px">DOCENTE</th>
+                        <th style="width:70px">SESIÓN</th>
+                        <th>TEMA</th>
+                        <th>RECURSOS TIC</th>
+                        <th style="width:70px">G / S</th>
+                        <th style="width:60px">EST.</th>
+                        <th style="width:90px">FECHA</th>
+                        <th style="width:110px">HORA</th>
+                        <th style="width:70px">ACCIÓN</th>
+                    </tr>
+                </thead>
+                <tbody id="cuerpoTablaInforme"></tbody>
+            </table>
+        </div>
+
+        <!-- ===== LOGROS - DIFICULTADES - PROPUESTAS DE MEJORA ===== -->
+        <div style="background:#f8fbff;border:1px solid #bbdefb;border-radius:12px;padding:20px;margin-top:24px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:4px;">
+                <h4 style="color:#1a73e8;margin:0;">📝 Logros, Dificultades y Propuestas de Mejora</h4>
+                <button type="button" onclick="generarResumenAuto(document.getElementById('mesFiltro').value, datosInforme)" style="background:#1a73e8;color:white;border:none;border-radius:8px;padding:8px 14px;font-size:12px;cursor:pointer;">🔄 Regenerar sugerencia automática</button>
+            </div>
+            <p style="font-size:12px;color:#888;margin:4px 0 16px;">Este texto se sugiere automáticamente según los registros del mes. Puedes editarlo libremente antes de descargar el PDF; así se incluirá en una página nueva al final del informe.</p>
+
+            <div style="margin-bottom:16px;">
+                <label style="display:block;font-weight:700;color:#1b5e20;margin-bottom:6px;">✅ LOGROS</label>
+                <textarea id="logrosTexto" rows="4" style="width:100%;padding:10px;border-radius:8px;border:2px solid #a5d6a7;font-size:13px;font-family:inherit;resize:vertical;"></textarea>
+            </div>
+            <div style="margin-bottom:16px;">
+                <label style="display:block;font-weight:700;color:#b71c1c;margin-bottom:6px;">⚠️ DIFICULTADES</label>
+                <textarea id="dificultadesTexto" rows="4" style="width:100%;padding:10px;border-radius:8px;border:2px solid #ef9a9a;font-size:13px;font-family:inherit;resize:vertical;"></textarea>
+            </div>
+            <div>
+                <label style="display:block;font-weight:700;color:#1a73e8;margin-bottom:6px;">🚀 PROPUESTAS DE MEJORA</label>
+                <textarea id="propuestasTexto" rows="4" style="width:100%;padding:10px;border-radius:8px;border:2px solid #90caf9;font-size:13px;font-family:inherit;resize:vertical;"></textarea>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const firebaseConfig = {
+    apiKey: "AIzaSyBjVEgG7cuCk7WFV0st0baexRJT_d-JilI",
+    authDomain: "registro-de-asistencia--aip.firebaseapp.com",
+    projectId: "registro-de-asistencia--aip",
+    databaseURL: "https://registro-de-asistencia--aip-default-rtdb.firebaseio.com",
+    storageBucket: "registro-de-asistencia--aip.firebasestorage.app",
+    messagingSenderId: "253235771906",
+    appId: "1:253235771906:web:7d2bdd8ccbb0733af5c51b",
+    measurementId: "G-6MM1SV2DX9"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// ===== INDICADOR DE CONEXIÓN EN TIEMPO REAL =====
+const connectedRef = db.ref(".info/connected");
+connectedRef.on("value", (snap) => {
+    const el = document.getElementById("estadoConexion");
+    const texto = document.getElementById("textoConexion");
+    if (snap.val() === true) {
+        el.className = "estado-conexion conectado";
+        texto.textContent = "Firebase conectado";
+    } else {
+        el.className = "estado-conexion desconectado";
+        texto.textContent = "Sin conexión a Firebase";
+    }
+});
+
+// ===== CALCULAR SEMANA ACTUAL DINÁMICAMENTE =====
+function obtenerLunesDeSemana(fecha) {
+    const d = new Date(fecha);
+    const dia = d.getDay();
+    const diff = (dia === 0) ? -6 : 1 - dia;
+    d.setDate(d.getDate() + diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
+
+function formatFecha(d) {
+    return d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0');
+}
+
+function formatFechaCorta(d) {
+    return String(d.getDate()).padStart(2, '0') + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        d.getFullYear();
+}
+
+const lunes = obtenerLunesDeSemana(new Date());
+const viernes = new Date(lunes);
+viernes.setDate(lunes.getDate() + 4);
+const semanaId = formatFecha(lunes);
+
+document.getElementById("semana-actual").textContent =
+    "📅 Semana: " + formatFechaCorta(lunes) + " al " + formatFechaCorta(viernes);
+
+const horas = ["07:45 - 08:30", "08:30 - 09:15", "09:15 - 10:00", "RECREO", "10:30 - 11:15", "11:15 - 12:00", "12:00 - 12:45"];
+const dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
+const breakLetras = ["B", "R", "E", "A", "K"];
+
+// Actividades especiales para estilo diferenciado en la grilla
+const ACTIVIDADES_ESPECIALES = ["ATENCIÓN A ESTUDIANTES-PIP", "CLASE REMOTA", "FERIADO", "ACTIVIDADES INSTITUCIONALES"];
+const COLORES_ESPECIALES = {
+    "ATENCIÓN A ESTUDIANTES-PIP": { bg: "#3949ab", label: "PIP" },
+    "CLASE REMOTA": { bg: "#00838f", label: "REMOTA" },
+    "FERIADO": { bg: "#c62828", label: "FERIADO" },
+    "ACTIVIDADES INSTITUCIONALES": { bg: "#6a1b9a", label: "ACT. INST." }
+};
+
+let celdasSeleccionadas = [];
+let isAdmin = false; // se activa solo con la clave correcta (checkAdmin / verificarClaveAdmin)
+let miChart = null;
+let datosInforme = [];
+let presentoSeleccionado = "SI";
+let noIngresosData = [];
+
+// Lista de docentes (misma fuente que el select principal) para el formulario de "No ingresó"
+const DOCENTES_LISTA = Array.from(document.querySelectorAll('#docente optgroup[label="DOCENTES"] option')).map(o => o.textContent);
+
+function poblarSelectNoIngreso() {
+    const sel = document.getElementById("docenteNoIngreso");
+    DOCENTES_LISTA.forEach(nombre => {
+        const opt = document.createElement("option");
+        opt.value = nombre;
+        opt.textContent = nombre;
+        sel.appendChild(opt);
+    });
+}
+poblarSelectNoIngreso();
+
+// ===== PANEL PÚBLICO: ESTADO DE INGRESO A AIP (EN TIEMPO REAL) =====
+const ESPECIALES_PUBLICO = ["DIRECTIVOS","PSICÓLOGO (A)","VISITA/PERSONAL EXTERNO","ATENCIÓN A ESTUDIANTES-PIP","CLASE REMOTA","FERIADO","ACTIVIDADES INSTITUCIONALES","DOCENTE DE SECUNDARIA"];
+let asistenciasCachePublico = null;
+let noIngresosCachePublico = null;
+
+function actualizarEstadoPublico() {
+    const cont = document.getElementById('estadoPublico');
+    if (!cont || !asistenciasCachePublico) return;
+
+    const mesActualPub = new Date().toISOString().slice(0, 7);
+    const ingresosSets = {}; // docente -> Set(fecha)
+
+    Object.values(asistenciasCachePublico).forEach(semana => {
+        if (!semana) return;
+        Object.values(semana).forEach(reg => {
+            if (!reg || reg.mes !== mesActualPub) return;
+            if (reg.noIngreso) return;
+            if (ESPECIALES_PUBLICO.includes(reg.docente)) return;
+            if (!ingresosSets[reg.docente]) ingresosSets[reg.docente] = new Set();
+            ingresosSets[reg.docente].add(reg.fecha);
+        });
+    });
+
+    const motivoPorDocente = {};
+    if (noIngresosCachePublico) {
+        Object.values(noIngresosCachePublico).forEach(r => {
+            if (r && r.docente) motivoPorDocente[r.docente] = r.fecha;
+        });
+    }
+
+    const siList = DOCENTES_LISTA.filter(d => ingresosSets[d]).sort();
+    const noList = DOCENTES_LISTA.filter(d => !ingresosSets[d]).sort();
+
+    const htmlSi = siList.length
+        ? siList.map(d => `<li>${d} <span style="font-weight:400;color:#2e7d32;">(${ingresosSets[d].size} ingreso${ingresosSets[d].size !== 1 ? 's' : ''})</span></li>`).join('')
+        : '<li class="vacio">Aún nadie ha ingresado este mes</li>';
+
+    const htmlNo = noList.length
+        ? noList.map(d => {
+            const marca = motivoPorDocente[d] ? `<span class="marca">Reportado el ${motivoPorDocente[d]}</span>` : '';
+            return `<li>${d}${marca}</li>`;
+        }).join('')
+        : '<li class="vacio">🎉 ¡Todos los docentes ya ingresaron!</li>';
+
+    cont.innerHTML = `
+        <div class="estado-col si"><h4>✅ Ingresaron este mes (${siList.length})</h4><ul>${htmlSi}</ul></div>
+        <div class="estado-col no"><h4>❌ Aún no ingresan este mes (${noList.length})</h4><ul>${htmlNo}</ul></div>
+    `;
+}
+
+db.ref('asistencias').on('value', snap => {
+    asistenciasCachePublico = snap.val();
+    actualizarEstadoPublico();
+});
+db.ref('noIngresos/' + new Date().toISOString().slice(0, 7)).on('value', snap => {
+    noIngresosCachePublico = snap.val();
+    actualizarEstadoPublico();
+});
+// ================================================================
+
+function selPresento(valor) {
+    presentoSeleccionado = valor;
+    document.getElementById("btnSi").className = "btn-presento" + (valor === "SI" ? " activo-si" : "");
+    document.getElementById("btnNo").className = "btn-presento" + (valor === "NO" ? " activo-no" : "");
+}
+
+function generarId(dia, hora) {
+    try {
+        return btoa(unescape(encodeURIComponent(dia + hora))).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+    } catch(e) {
+        return (dia + hora).split('').reduce((acc, c) => acc + c.charCodeAt(0), 0).toString();
+    }
+}
+
+function crearTabla() {
+    const tabla = document.getElementById("tabla");
+    let html = "<div></div>";
+    dias.forEach(d => html += `<div class="header">${d}</div>`);
+    horas.forEach(h => {
+        html += `<div class="hora">${h === "RECREO" ? "10:00-10:30" : h}</div>`;
+        dias.forEach((d, i) => {
+            if (h === "RECREO") {
+                html += `<div class="celda recreo">${breakLetras[i]}</div>`;
+            } else {
+                const id = generarId(d, h);
+                html += `<div class="celda" id="${id}" onclick="manejarClickCelda('${id}', '${d}', '${h}')"></div>`;
+            }
+        });
+    });
+    tabla.innerHTML = html;
+}
+
+function manejarClickCelda(id, d, h) {
+    const el = document.getElementById(id);
+    if (!el || el.classList.contains('ocupado')) return;
+    const idx = celdasSeleccionadas.findIndex(c => c.id === id);
+    if (idx > -1) {
+        celdasSeleccionadas.splice(idx, 1);
+        el.classList.remove('seleccionada');
+    } else {
+        celdasSeleccionadas.push({ id, d, h });
+        el.classList.add('seleccionada');
+    }
+}
+
+function registrarAsistencia() {
+    const doc = document.getElementById("docente").value;
+    const gra = document.getElementById("grado").value;
+    const sec = document.getElementById("seccion").value;
+    const estVal = document.getElementById("estudiantes").value;
+    const tem = document.getElementById("tema").value.trim();
+    const rec = document.getElementById("recursos").value.trim();
+
+    if (!doc || !gra || !sec) { toast("⚠️ Seleccione docente, grado y sección"); return; }
+    if (celdasSeleccionadas.length === 0) { toast("⚠️ Seleccione al menos una hora en la grilla"); return; }
+
+    const est = parseInt(estVal, 10);
+    if (estVal !== "" && (isNaN(est) || est < 0 || est > 50)) {
+        toast("⚠️ Cantidad de estudiantes inválida (0-50)");
+        return;
+    }
+
+    const updates = {};
+    const hoy = new Date();
+    const mesActual = hoy.toISOString().slice(0, 7);
+
+    celdasSeleccionadas.forEach(c => {
+        const key = db.ref().push().key;
+        updates[key] = {
+            docente: doc,
+            grado: gra,
+            seccion: sec,
+            estudiantes: isNaN(est) ? "0" : String(est),
+            tema: tem || "Sin tema",
+            recursos: rec || "Ninguno",
+            dia: c.d,
+            hora: c.h,
+            mes: mesActual,
+            fecha: hoy.toLocaleDateString('es-PE'),
+            presento: presentoSeleccionado,
+            semId: semanaId
+        };
+    });
+
+    db.ref('asistencias/' + semanaId).update(updates)
+        .then(() => {
+            toast("✅ Registrado correctamente");
+            celdasSeleccionadas = [];
+        })
+        .catch(err => {
+            console.error("Error al guardar:", err);
+            toast("❌ Error al guardar. Intente de nuevo.");
+        });
+}
+
+function checkAdmin() {
+    let clave = prompt("Clave:");
+    if (clave === "Yarvin24") {
+        isAdmin = true;
+        document.getElementById("panelAdmin").style.display = "block";
+        document.getElementById("mesFiltro").value = new Date().toISOString().slice(0, 7);
+        generarReporteMensual();
+    } else if (clave !== null) {
+        toast("❌ Clave incorrecta");
+    }
+}
+
+// Verifica la clave de admin al vuelo (para acciones fuera del panel, como borrar en la cuadrícula pública).
+// Si ya se autenticó antes (isAdmin === true) no vuelve a preguntar.
+function verificarClaveAdmin() {
+    if (isAdmin) return true;
+    let clave = prompt("🔒 Solo el administrador puede eliminar.\nIngresa la clave:");
+    if (clave === "Yarvin24") {
+        isAdmin = true;
+        return true;
+    }
+    if (clave !== null) toast("❌ Clave incorrecta. No autorizado.");
+    return false;
+}
+
+function registrarNoIngreso() {
+    const docente = document.getElementById("docenteNoIngreso").value;
+    const fecha = document.getElementById("fechaNoIngreso").value; // formato YYYY-MM-DD
+    const motivo = document.getElementById("motivoNoIngreso").value.trim();
+    const gra = document.getElementById("gradoNoIngreso").value;
+    const sec = document.getElementById("seccionNoIngreso").value;
+
+    if (!docente) { toast("⚠️ Seleccione un docente"); return; }
+    if (!fecha) { toast("⚠️ Seleccione una fecha"); return; }
+    if (!gra || !sec) { toast("⚠️ Seleccione grado y sección"); return; }
+    if (celdasSeleccionadas.length === 0) { toast("⚠️ Haga clic en la hora de la grilla donde no ingresó"); return; }
+
+    const mes = fecha.slice(0, 7);
+    const [y, m, d] = fecha.split('-');
+    const fechaLegible = `${d}-${m}-${y}`;
+
+    // 1) Guardar en el historial de "No Ingresó" (para la tabla del panel admin y el reporte PDF)
+    db.ref('noIngresos/' + mes).push({
+        docente,
+        grado: gra,
+        seccion: sec,
+        fecha: fechaLegible,
+        fechaISO: fecha,
+        motivo: motivo || "No especificado",
+        timestamp: Date.now()
+    }).then(() => {
+        toast("🚫 Registrado: " + docente + " no ingresó");
+        document.getElementById("motivoNoIngreso").value = "";
+        const mesSel = document.getElementById("mesFiltro").value;
+        if (mesSel === mes) cargarNoIngresos(mes);
+    }).catch(err => {
+        console.error("Error al registrar no ingreso:", err);
+        toast("❌ No se pudo registrar.");
+    });
+
+    // 2) Marcar visualmente la(s) celda(s) elegida(s) en la grilla semanal como "NO INGRESÓ"
+    const updates = {};
+    const celdasElegidas = celdasSeleccionadas.slice();
+    celdasElegidas.forEach(c => {
+        const key = db.ref().push().key;
+        updates[key] = {
+            docente: docente,
+            grado: gra,
+            seccion: sec,
+            dia: c.d,
+            hora: c.h,
+            mes: mes,
+            fecha: fechaLegible,
+            noIngreso: true,
+            motivo: motivo || "No especificado",
+            semId: semanaId
+        };
+    });
+
+    db.ref('asistencias/' + semanaId).update(updates)
+        .then(() => {
+            celdasElegidas.forEach(c => {
+                const el = document.getElementById(c.id);
+                if (el) el.classList.remove('seleccionada');
+            });
+            celdasSeleccionadas = [];
+        })
+        .catch(err => {
+            console.error("Error al marcar en la grilla:", err);
+            toast("⚠️ Se registró, pero no se pudo marcar en la grilla.");
+        });
+}
+
+function cargarNoIngresos(mes) {
+    const cuerpo = document.getElementById("cuerpoTablaNoIngreso");
+    if (!mes) return;
+    cuerpo.innerHTML = "<tr><td colspan='5' style='text-align:center;padding:14px;color:#aaa'>⏳ Cargando...</td></tr>";
+
+    db.ref('noIngresos/' + mes).once('value', snap => {
+        const data = snap.val() || {};
+        noIngresosData = Object.entries(data).map(([key, val]) => ({ ...val, key, mes }));
+
+        if (!noIngresosData.length) {
+            cuerpo.innerHTML = "<tr><td colspan='5' style='text-align:center;padding:14px;color:#aaa'>✅ No hay registros de inasistencia este mes</td></tr>";
+            return;
+        }
+
+        cuerpo.innerHTML = noIngresosData
+            .sort((a, b) => (a.fechaISO || "").localeCompare(b.fechaISO || ""))
+            .map((r, i) => `
+                <tr>
+                    <td><b>${i + 1}</b></td>
+                    <td style="text-align:left;font-weight:600">${r.docente}</td>
+                    <td>${r.fecha}</td>
+                    <td style="text-align:left">${r.motivo}</td>
+                    <td><button class="btn-del" onclick="eliminarNoIngreso('${r.mes}', '${r.key}')">🗑️</button></td>
+                </tr>`).join('');
+    }).catch(err => {
+        console.error("Error al cargar no ingresos:", err);
+        cuerpo.innerHTML = "<tr><td colspan='5' style='text-align:center;padding:14px;color:#c62828'>❌ Error al cargar</td></tr>";
+    });
+}
+
+function eliminarCeldaNoIngreso(semId, key) {
+    if (!verificarClaveAdmin()) return;
+    if (!confirm("¿Eliminar esta marca de 'NO INGRESÓ' de la cuadrícula? (Corrige un error de casilla)")) return;
+    db.ref('asistencias/' + semId + '/' + key).remove()
+        .then(() => toast("🗑️ Casilla corregida"))
+        .catch(err => {
+            console.error("Error al eliminar celda:", err);
+            toast("❌ No se pudo eliminar.");
+        });
+}
+
+function eliminarNoIngreso(mes, key) {
+    if (!verificarClaveAdmin()) return;
+    if (!confirm("¿Eliminar este registro de inasistencia?")) return;
+    db.ref('noIngresos/' + mes + '/' + key).remove()
+        .then(() => {
+            toast("🗑️ Registro eliminado");
+            cargarNoIngresos(mes);
+        })
+        .catch(err => {
+            console.error("Error al eliminar:", err);
+            toast("❌ No se pudo eliminar.");
+        });
+}
+
+function generarReporteMensual() {
+    const mesSel = document.getElementById("mesFiltro").value;
+    if (!mesSel) return;
+
+    cargarNoIngresos(mesSel);
+
+    const cuerpo = document.getElementById("cuerpoTablaInforme");
+    cuerpo.innerHTML = "<tr><td colspan='10' style='text-align:center;padding:20px;color:#aaa'>⏳ Cargando...</td></tr>";
+    datosInforme = [];
+    const conteo = {};
+
+    db.ref('asistencias').once('value', snap => {
+        const todas = snap.val() || {};
+        cuerpo.innerHTML = "";
+        let i = 1;
+
+        const agrupado = {};
+
+        Object.keys(todas).forEach(sId => {
+            const semana = todas[sId];
+            if (!semana) return;
+            Object.keys(semana).forEach(key => {
+                const reg = semana[key];
+                if (!reg || reg.mes !== mesSel) return;
+                if (reg.noIngreso) return; // los "no ingresó" no cuentan como sesión dictada
+
+                const grupoKey = `${reg.docente}||${reg.fecha}||${reg.tema}`;
+                if (!agrupado[grupoKey]) {
+                    agrupado[grupoKey] = { ...reg, sId, key, horas: [reg.hora] };
+                } else {
+                    if (reg.hora && !agrupado[grupoKey].horas.includes(reg.hora)) {
+                        agrupado[grupoKey].horas.push(reg.hora);
+                    }
+                }
+            });
+        });
+
+        Object.values(agrupado).forEach(reg => {
+            let etiqueta = "";
+            const cargosEspeciales = ["DIRECTIVOS", "PSICÓLOGO (A)", "VISITA/PERSONAL EXTERNO", "ATENCIÓN A ESTUDIANTES-PIP", "CLASE REMOTA", "FERIADO"];
+            if (cargosEspeciales.includes(reg.grado)) {
+                etiqueta = reg.grado;
+            } else {
+                let partes = reg.docente.trim().split(' ');
+                let nombre = partes.length >= 3 ? partes[2] : partes[0];
+                etiqueta = nombre + " " + reg.grado + (reg.seccion || '');
+            }
+
+            conteo[etiqueta] = (conteo[etiqueta] || 0) + 1;
+            datosInforme.push({ ...reg });
+
+            const grado    = reg.grado    || '—';
+            const seccion  = (reg.seccion && reg.seccion !== 'undefined') ? reg.seccion : '—';
+            const tema     = reg.tema     || '—';
+            const recursos = reg.recursos || '—';
+            const presento = reg.presento || 'SI';
+            const estudiantes = reg.estudiantes || '0';
+            const gs = (seccion === '—') ? grado : `${grado} ${seccion}`;
+            const horasTexto = reg.horas ? reg.horas.sort().join(', ') : (reg.hora || '—');
+
+            // Estilo especial para actividades especiales en la tabla
+            let rowStyle = "";
+            if (reg.docente === "ATENCIÓN A ESTUDIANTES-PIP") rowStyle = "background:#e8eaf6;";
+            else if (reg.docente === "CLASE REMOTA") rowStyle = "background:#e0f7fa;";
+            else if (reg.docente === "FERIADO") rowStyle = "background:#fce4ec;";
+
+            cuerpo.innerHTML += `<tr style="${rowStyle}">
+                <td><b>${i++}</b></td>
+                <td style="text-align:left;font-weight:600">${reg.docente}</td>
+                <td>
+                    <button 
+                        class="btn-editar-sesion ${presento==='SI' ? 'sesion-si' : 'sesion-no'}"
+                        data-sid="${reg.sId}" data-key="${reg.key}" data-presento="${presento}"
+                        onclick="editarSesionBtn(this)"
+                        title="Clic para cambiar">
+                        ${presento==='SI' ? '✅ SÍ' : '❌ NO'}
+                    </button>
+                </td>
+                <td style="text-align:left">${tema}</td>
+                <td style="text-align:left">${recursos}</td>
+                <td><b>${gs}</b></td>
+                <td><b>${estudiantes}</b></td>
+                <td>${reg.fecha || '—'}</td>
+                <td style="font-size:10px">${horasTexto}</td>
+                <td><button class="btn-del" onclick="eliminarRegistro('${reg.sId}', '${reg.key}')">🗑️</button></td>
+            </tr>`;
+        });
+
+        if (i === 1) {
+            cuerpo.innerHTML = "<tr><td colspan='10' style='text-align:center;padding:20px;color:#aaa'>📭 No hay registros para este mes</td></tr>";
+        }
+
+        actualizarGrafico(conteo);
+        actualizarGraficosCirculares(datosInforme);
+        generarResumenAuto(mesSel, datosInforme);
+    }).catch(err => {
+        console.error("Error al cargar datos:", err);
+        toast("❌ Error al cargar el reporte.");
+    });
+}
+
+// ===== LOGROS / DIFICULTADES / PROPUESTAS (sugerencia automática) =====
+function generarResumenAuto(mesSel, registros) {
+    const especialesIgnorar = ["DIRECTIVOS","PSICÓLOGO (A)","VISITA/PERSONAL EXTERNO","ATENCIÓN A ESTUDIANTES-PIP","CLASE REMOTA","FERIADO","ACTIVIDADES INSTITUCIONALES","DOCENTE DE SECUNDARIA"];
+    const gradosValidos = ['1°','2°','3°','4°','5°','6°'];
+    const META = 4;
+
+    const ingresosPorDocente = {}; // docente -> Set(fecha)
+    const ingresosGrado = {};      // grado -> Set(docente||fecha)
+    let sesionesSI = 0, sesionesNO = 0;
+
+    registros.forEach(r => {
+        if (r.presento === 'NO') sesionesNO++; else sesionesSI++;
+
+        if (!especialesIgnorar.includes(r.docente)) {
+            if (!ingresosPorDocente[r.docente]) ingresosPorDocente[r.docente] = new Set();
+            ingresosPorDocente[r.docente].add(r.fecha);
+        }
+        if (gradosValidos.includes(r.grado)) {
+            if (!ingresosGrado[r.grado]) ingresosGrado[r.grado] = new Set();
+            ingresosGrado[r.grado].add(r.docente + '||' + r.fecha);
+        }
+    });
+
+    const conteoPorDocente = {};
+    Object.entries(ingresosPorDocente).forEach(([doc, fechas]) => conteoPorDocente[doc] = fechas.size);
+
+    const totalDocentesConIngreso = Object.keys(conteoPorDocente).length;
+    const docentesCumplieron = Object.values(conteoPorDocente).filter(v => v >= META).length;
+    const docentesNoCumplieron = totalDocentesConIngreso - docentesCumplieron;
+    const docentesSinIngreso = Math.max(DOCENTES_LISTA.length - totalDocentesConIngreso, 0);
+
+    let gradoTop = null, gradoTopValor = 0;
+    Object.entries(ingresosGrado).forEach(([g, set]) => {
+        if (set.size > gradoTopValor) { gradoTop = g; gradoTopValor = set.size; }
+    });
+
+    db.ref('noIngresos/' + mesSel).once('value', snap => {
+        const data = snap.val() || {};
+        const totalNoIngresos = Object.keys(data).length;
+        const docentesNoIngresoUnicos = new Set(Object.values(data).map(r => r.docente)).size;
+
+        // ── LOGROS ──
+        let logros = `Durante el mes se registraron ${totalDocentesConIngreso} docente(s) con ingreso al aula AIP, de los cuales ${docentesCumplieron} cumplieron la meta mensual de ${META} visitas. Se presentaron ${sesionesSI} sesión(es) de aprendizaje con tema y recursos definidos.`;
+        if (gradoTop) logros += ` El grado ${gradoTop} fue el que registró mayor participación este mes, con ${gradoTopValor} ingreso(s).`;
+        if (docentesCumplieron === 0 && totalDocentesConIngreso === 0) {
+            logros = "Aún no se registran ingresos al aula AIP este mes.";
+        }
+
+        // ── DIFICULTADES ──
+        let dificultades = '';
+        if (docentesNoCumplieron > 0) dificultades += `${docentesNoCumplieron} docente(s) no llegaron a cumplir la meta de ${META} visitas mensuales. `;
+        if (docentesSinIngreso > 0) dificultades += `${docentesSinIngreso} docente(s) de la lista aún no registran ningún ingreso este mes. `;
+        if (totalNoIngresos > 0) dificultades += `Se registraron ${totalNoIngresos} caso(s) de "no ingreso" (${docentesNoIngresoUnicos} docente(s) distintos) en horarios ya programados. `;
+        if (sesionesNO > 0) dificultades += `${sesionesNO} sesión(es) se registraron sin presentación de la sesión de aprendizaje. `;
+        if (!dificultades) dificultades = 'No se registraron dificultades relevantes este mes.';
+
+        // ── PROPUESTAS DE MEJORA ──
+        let propuestas = 'Continuar con el seguimiento mensual del uso del aula AIP y reforzar la coordinación con los docentes que aún no alcanzan la meta de visitas.';
+        if (docentesNoCumplieron > 0 || docentesSinIngreso > 0) propuestas += ' Se recomienda coordinar con la subdirección recordatorios u horarios de refuerzo para los docentes con bajo cumplimiento.';
+        if (totalNoIngresos > 0) propuestas += ' Revisar en conjunto con los docentes los motivos de los "no ingresos" registrados, a fin de prevenir su repetición.';
+
+        const elLogros = document.getElementById('logrosTexto');
+        const elDificultades = document.getElementById('dificultadesTexto');
+        const elPropuestas = document.getElementById('propuestasTexto');
+        if (elLogros) elLogros.value = logros;
+        if (elDificultades) elDificultades.value = dificultades;
+        if (elPropuestas) elPropuestas.value = propuestas;
+    });
+}
+
+function actualizarGrafico(conteo) {
+    // legacy — mantener para compatibilidad con exportarPDF
+    const ctx = document.getElementById('graficoAsistencia').getContext('2d');
+    if (miChart) miChart.destroy();
+    const etiquetas = Object.keys(conteo);
+    const valores = Object.values(conteo);
+    if (!etiquetas.length) return;
+    miChart = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: etiquetas, datasets: [{ data: valores, backgroundColor: '#1a73e8' }] },
+        options: { responsive: false, animation: false, plugins: { legend: { display: false } } }
+    });
+}
+
+// ── COLORES PARA GRADOS ──
+const COLORES_GRADOS = {
+    '1°': '#FF6384', '2°': '#36A2EB', '3°': '#FFCE56',
+    '4°': '#4BC0C0', '5°': '#9966FF', '6°': '#FF9F40',
+    'OTROS': '#aaaaaa'
+};
+const PALETA = ['#FF6384','#36A2EB','#FFCE56','#4BC0C0','#9966FF','#FF9F40','#009688','#795548','#607D8B','#E91E63','#00BCD4','#8BC34A'];
+
+let chartGrado = null;
+const chartsDocentes = {};
+
+function actualizarGraficosCirculares(registros) {
+    // ── 1. GRÁFICO CIRCULAR POR GRADO ──
+    // Contar ingresos únicos por grado (docente+fecha únicos, no sesiones)
+    const gradosValidos = ['1°','2°','3°','4°','5°','6°'];
+    const ingresosGrado = {}; // grado -> Set de "docente||fecha"
+    registros.forEach(r => {
+        const g = gradosValidos.includes(r.grado) ? r.grado : null;
+        if (!g) return;
+        if (!ingresosGrado[g]) ingresosGrado[g] = new Set();
+        ingresosGrado[g].add(r.docente + '||' + r.fecha);
+    });
+
+    const gradosOrdenados = gradosValidos.filter(g => ingresosGrado[g]);
+    const valoresGrado = gradosOrdenados.map(g => ingresosGrado[g].size);
+    const totalGrado = valoresGrado.reduce((a,b)=>a+b, 0);
+    const coloresGrado = gradosOrdenados.map(g => COLORES_GRADOS[g] || '#aaa');
+
+    const ctxG = document.getElementById('graficoGrado').getContext('2d');
+    if (chartGrado) chartGrado.destroy();
+    if (gradosOrdenados.length) {
+        chartGrado = new Chart(ctxG, {
+            type: 'doughnut',
+            data: { labels: gradosOrdenados, datasets: [{ data: valoresGrado, backgroundColor: coloresGrado, borderWidth: 2, borderColor: '#fff' }] },
+            options: {
+                responsive: false, cutout: '60%',
+                plugins: { legend: { display: false }, tooltip: {
+                    callbacks: { label: (ctx) => ` ${ctx.label}: ${ctx.raw} ingreso(s) (${((ctx.raw/totalGrado)*100).toFixed(1)}%)` }
+                }}
+            }
+        });
+    }
+
+    // Leyenda manual
+    const leyenda = document.getElementById('leyendaGrado');
+    leyenda.innerHTML = gradosOrdenados.map((g, i) => {
+        const pct = ((valoresGrado[i]/totalGrado)*100).toFixed(1);
+        return `<div style="display:flex;align-items:center;gap:8px;">
+            <span style="width:14px;height:14px;border-radius:3px;background:${coloresGrado[i]};display:inline-block;flex-shrink:0;"></span>
+            <span><b>${g}</b> — ${valoresGrado[i]} ingreso(s) <span style="color:#888;">(${pct}%)</span></span>
+        </div>`;
+    }).join('');
+
+    // ── 2. MINI DOUGHNUTS POR DOCENTE ──
+    const META = 4;
+    const especialesIgnorar = ["DIRECTIVOS","PSICÓLOGO (A)","VISITA/PERSONAL EXTERNO","ATENCIÓN A ESTUDIANTES-PIP","CLASE REMOTA","FERIADO","ACTIVIDADES INSTITUCIONALES","DOCENTE DE SECUNDARIA"];
+
+    // Contar fechas únicas por docente = ingresos reales al mes
+    const ingresosPorDocente = {};
+    registros.forEach(r => {
+        if (especialesIgnorar.includes(r.docente)) return;
+        if (!ingresosPorDocente[r.docente]) ingresosPorDocente[r.docente] = new Set();
+        ingresosPorDocente[r.docente].add(r.fecha);
+    });
+    const conteoPorDocente = {};
+    Object.entries(ingresosPorDocente).forEach(([doc, fechas]) => {
+        conteoPorDocente[doc] = fechas.size;
+    });
+
+    const contenedor = document.getElementById('graficoDocentes');
+    // Destruir charts previos
+    Object.values(chartsDocentes).forEach(c => c.destroy());
+    Object.keys(chartsDocentes).forEach(k => delete chartsDocentes[k]);
+    contenedor.innerHTML = '';
+
+    if (!Object.keys(conteoPorDocente).length) {
+        contenedor.innerHTML = '<p style="color:#aaa;text-align:center;width:100%;">Sin registros de docentes este mes</p>';
+        return;
+    }
+
+    Object.entries(conteoPorDocente).sort((a,b)=>b[1]-a[1]).forEach(([docente, visitas], idx) => {
+        const cumplidas = Math.min(visitas, META);
+        const pct = Math.round((cumplidas / META) * 100);
+        const color = pct >= 100 ? '#2e7d32' : pct >= 75 ? '#f9a825' : '#c62828';
+        const faltantes = META - cumplidas;
+
+        // Nombre corto
+        const partes = docente.trim().split(' ');
+        const nombreCorto = partes.length >= 2 ? partes[0] + ' ' + partes[1] : partes[0];
+
+        const canvasId = 'dc_' + idx;
+        const div = document.createElement('div');
+        div.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:6px;width:130px;background:white;border-radius:12px;padding:12px 8px;box-shadow:0 2px 8px rgba(0,0,0,0.08);border:1px solid #eee;';
+        div.innerHTML = `
+            <div style="position:relative;width:90px;height:90px;">
+                <canvas id="${canvasId}" width="90" height="90"></canvas>
+                <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                    <span style="font-size:18px;font-weight:900;color:${color};">${pct}%</span>
+                    <span style="font-size:9px;color:#888;">${cumplidas}/${META}</span>
+                </div>
+            </div>
+            <div style="font-size:10px;font-weight:700;text-align:center;color:#333;line-height:1.3;">${nombreCorto}</div>
+            <div style="font-size:10px;text-align:center;">
+                ${pct>=100
+                    ? '<span style="color:#2e7d32;font-weight:700;">✅ Meta cumplida</span>'
+                    : `<span style="color:#c62828;">Faltan <b>${faltantes}</b></span>`}
+            </div>`;
+        contenedor.appendChild(div);
+
+        // Render chart después de que el DOM esté listo
+        requestAnimationFrame(() => {
+            const ctxD = document.getElementById(canvasId);
+            if (!ctxD) return;
+            chartsDocentes[canvasId] = new Chart(ctxD.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    datasets: [{
+                        data: [cumplidas, Math.max(0, META - cumplidas)],
+                        backgroundColor: [color, '#eeeeee'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: false, cutout: '70%',
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                    animation: { duration: 600 }
+                }
+            });
+        });
+    });
+}
+
+function exportarPDF() {
+    if (datosInforme.length === 0) { toast("⚠️ No hay datos para exportar"); return; }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('l', 'mm', 'a4');
+    const mes = document.getElementById("mesFiltro").value;
+
+    doc.setFontSize(13);
+    doc.text("I.E. Nº 0162 SAN JOSÉ OBRERO - INFORME MENSUAL AIP", 148, 15, { align: "center" });
+
+    const filas = datosInforme.map((r, i) => {
+        const grado   = r.grado || '—';
+        const seccion = (r.seccion && r.seccion !== 'undefined') ? r.seccion : '—';
+        const gs = (seccion === '—') ? grado : `${grado}-${seccion}`;
+        const horasTexto = r.horas ? r.horas.sort().join('\n') : (r.hora || '—');
+        return [
+            i + 1, r.docente, r.presento || 'SI', r.tema || '—',
+            r.recursos || '—', gs, r.estudiantes || '0', r.fecha || '—', horasTexto
+        ];
+    });
+
+    doc.autoTable({
+        startY: 25,
+        head: [['N°', 'DOCENTE', 'SESIÓN', 'TEMA', 'RECURSOS', 'G-S', 'EST.', 'FECHA', 'HORA']],
+        body: filas,
+        theme: 'grid',
+        styles: { fontSize: 7 }
+    });
+
+    // ── PÁGINA 2: GRÁFICOS CIRCULARES ──
+    doc.addPage();
+    doc.setFontSize(12);
+    doc.text("RESUMEN ESTADÍSTICO - GRÁFICOS DE CUMPLIMIENTO", 148, 14, { align: "center" });
+
+    // Gráfico circular por grado
+    const canvasGrado = document.getElementById('graficoGrado');
+    if (canvasGrado && chartGrado) {
+        doc.setFontSize(10);
+        doc.text("Distribución de Ingresos por Grado", 14, 24);
+        doc.addImage(canvasGrado.toDataURL("image/png"), 'PNG', 14, 28, 80, 80);
+        let ly = 34;
+        chartGrado.data.labels.forEach((lbl, i) => {
+            const val = chartGrado.data.datasets[0].data[i];
+            const total = chartGrado.data.datasets[0].data.reduce((a,b)=>a+b,0);
+            const pct = ((val/total)*100).toFixed(1);
+            doc.setFontSize(8);
+            doc.text(`${lbl}: ${val} ingreso(s) (${pct}%)`, 100, ly);
+            ly += 8;
+        });
+    }
+
+    // ── TABLA DE CUMPLIMIENTO POR DOCENTE ──
+    doc.setFontSize(10);
+    doc.text("Cumplimiento por Docente (meta: 4 ingresos/mes)", 14, 118);
+
+    const META_PDF = 4;
+    const especialesPDF = ["DIRECTIVOS","PSICÓLOGO (A)","VISITA/PERSONAL EXTERNO","ATENCIÓN A ESTUDIANTES-PIP","CLASE REMOTA","FERIADO","ACTIVIDADES INSTITUCIONALES","DOCENTE DE SECUNDARIA"];
+
+    // Calcular ingresos únicos por docente desde datosInforme
+    const ingresosPDF = {};
+    datosInforme.forEach(r => {
+        if (especialesPDF.includes(r.docente)) return;
+        if (!ingresosPDF[r.docente]) ingresosPDF[r.docente] = new Set();
+        ingresosPDF[r.docente].add(r.fecha);
+    });
+
+    const filasDocentes = Object.entries(ingresosPDF)
+        .sort((a,b) => b[1].size - a[1].size)
+        .map(([docente, fechas], i) => {
+            const ingresos = fechas.size;
+            const pct = Math.min(Math.round((ingresos / META_PDF) * 100), 100);
+            const faltantes = Math.max(META_PDF - ingresos, 0);
+            const estado = ingresos >= META_PDF ? '✓ Meta cumplida' : `Faltan ${faltantes}`;
+            return [i + 1, docente, ingresos, META_PDF, pct + '%', estado];
+        });
+
+    doc.autoTable({
+        startY: 122,
+        head: [['N°', 'DOCENTE', 'INGRESOS', 'META', '% CUMPLIMIENTO', 'ESTADO']],
+        body: filasDocentes,
+        theme: 'grid',
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [46, 125, 50], textColor: 255, fontStyle: 'bold' },
+        columnStyles: {
+            0: { cellWidth: 10 },
+            1: { cellWidth: 80, halign: 'left' },
+            2: { cellWidth: 22, halign: 'center' },
+            3: { cellWidth: 18, halign: 'center' },
+            4: { cellWidth: 30, halign: 'center' },
+            5: { cellWidth: 35, halign: 'center' }
+        },
+        didParseCell: (data) => {
+            if (data.column.index === 5 && data.section === 'body') {
+                const val = data.cell.raw;
+                data.cell.styles.textColor = val.includes('Meta') ? [46,125,50] : [198,40,40];
+                data.cell.styles.fontStyle = 'bold';
+            }
+            if (data.column.index === 4 && data.section === 'body') {
+                const pct = parseInt(data.cell.raw);
+                data.cell.styles.textColor = pct >= 100 ? [46,125,50] : pct >= 75 ? [249,168,37] : [198,40,40];
+                data.cell.styles.fontStyle = 'bold';
+            }
+        }
+    });
+
+    // ── TABLA: DOCENTES QUE NO INGRESARON (registro manual) ──
+    if (noIngresosData.length) {
+        doc.addPage();
+        doc.setFontSize(12);
+        doc.text("DOCENTES QUE NO INGRESARON A AIP", 148, 14, { align: "center" });
+
+        const filasNoIngreso = noIngresosData
+            .slice()
+            .sort((a, b) => (a.fechaISO || "").localeCompare(b.fechaISO || ""))
+            .map((r, i) => [i + 1, r.docente, r.fecha, r.motivo]);
+
+        doc.autoTable({
+            startY: 22,
+            head: [['N°', 'DOCENTE', 'FECHA', 'MOTIVO']],
+            body: filasNoIngreso,
+            theme: 'grid',
+            styles: { fontSize: 9 },
+            headStyles: { fillColor: [198, 40, 40], textColor: 255, fontStyle: 'bold' },
+            columnStyles: {
+                0: { cellWidth: 12 },
+                1: { cellWidth: 90, halign: 'left' },
+                2: { cellWidth: 30, halign: 'center' },
+                3: { cellWidth: 120, halign: 'left' }
+            }
+        });
+    }
+
+    // ── PÁGINA: LOGROS, DIFICULTADES Y PROPUESTAS DE MEJORA ──
+    const logrosVal = (document.getElementById('logrosTexto')?.value || '').trim();
+    const dificultadesVal = (document.getElementById('dificultadesTexto')?.value || '').trim();
+    const propuestasVal = (document.getElementById('propuestasTexto')?.value || '').trim();
+
+    if (logrosVal || dificultadesVal || propuestasVal) {
+        doc.addPage();
+        doc.setFontSize(13);
+        doc.text("LOGROS, DIFICULTADES Y PROPUESTAS DE MEJORA", 148, 16, { align: "center" });
+
+        const margenIzq = 14;
+        const anchoTexto = 269;
+        let y = 30;
+
+        const agregarBloque = (titulo, texto, colorTitulo) => {
+            if (!texto) return;
+            doc.setFontSize(11);
+            doc.setTextColor(colorTitulo[0], colorTitulo[1], colorTitulo[2]);
+            doc.text(titulo, margenIzq, y);
+            y += 7;
+
+            doc.setFontSize(10);
+            doc.setTextColor(40, 40, 40);
+            const lineas = doc.splitTextToSize(texto, anchoTexto);
+            lineas.forEach(linea => {
+                if (y > 190) { doc.addPage(); y = 20; }
+                doc.text(linea, margenIzq, y);
+                y += 6;
+            });
+            y += 8;
+        };
+
+        agregarBloque("✔ LOGROS", logrosVal, [27, 94, 32]);
+        agregarBloque("⚠ DIFICULTADES", dificultadesVal, [183, 28, 28]);
+        agregarBloque("➤ PROPUESTAS DE MEJORA", propuestasVal, [26, 115, 232]);
+
+        doc.setTextColor(0, 0, 0);
+    }
+
+    doc.save("Informe_AIP_" + mes + ".pdf");
+}
+
+function editarSesionBtn(btn) {
+    const sId = btn.getAttribute('data-sid');
+    const key = btn.getAttribute('data-key');
+    const valorActual = btn.getAttribute('data-presento');
+    editarSesion(sId, key, valorActual, btn);
+}
+
+function editarSesion(sId, key, valorActual, btn) {
+    const nuevoValor = valorActual === 'SI' ? 'NO' : 'SI';
+    const confirmMsg = `¿Cambiar "Presentó Sesión" de ${valorActual} → ${nuevoValor}?`;
+    if (!confirm(confirmMsg)) return;
+
+    db.ref("asistencias/" + sId + "/" + key + "/presento").set(nuevoValor)
+        .then(() => {
+            btn.textContent = nuevoValor === 'SI' ? '✅ SÍ' : '❌ NO';
+            btn.className = "btn-editar-sesion " + (nuevoValor === 'SI' ? 'sesion-si' : 'sesion-no');
+            btn.setAttribute('data-presento', nuevoValor);
+            toast("✏️ Sesión actualizada a " + nuevoValor);
+        })
+        .catch(err => {
+            console.error("Error al actualizar sesión:", err);
+            toast("❌ No se pudo actualizar.");
+        });
+}
+
+function eliminarRegistro(sId, key) {
+    if (!verificarClaveAdmin()) return;
+    if (!confirm("¿Eliminar este registro?")) return;
+
+    db.ref("asistencias/" + sId + "/" + key).remove()
+        .then(() => {
+            toast("🗑️ Registro eliminado");
+            generarReporteMensual();
+        })
+        .catch(err => {
+            console.error("Error al eliminar:", err);
+            toast("❌ No se pudo eliminar.");
+        });
+}
+
+function toast(m) {
+    const t = document.getElementById("toast");
+    t.textContent = m;
+    t.className = "show";
+    setTimeout(() => t.className = "", 3000);
+}
+
+// ===== INICIAR =====
+crearTabla();
+
+db.ref('asistencias/' + semanaId).on('value', snap => {
+    const data = snap.val();
+    crearTabla();
+    celdasSeleccionadas = [];
+
+    if (!data) return;
+
+    Object.keys(data).forEach(key => {
+        const reg = data[key];
+        if (!reg) return;
+        const id = generarId(reg.dia, reg.hora);
+        const el = document.getElementById(id);
+        if (el) {
+            el.classList.add('ocupado');
+
+            // Docente que NO ingresó: mostrar en rojo, ej. "NO INGRESÓ - 4°B"
+            if (reg.noIngreso) {
+                el.style.background = "#c62828";
+                el.style.cursor = "pointer";
+                el.title = "Clic para eliminar esta marca (fue un error)";
+                el.innerHTML = "<div style='color:white;'><b>NO INGRESÓ</b><br>" + (reg.grado || '') + (reg.seccion || '') + "<br><span style='font-size:9px;opacity:.85;'>✕ clic para borrar</span></div>";
+                el.onclick = () => eliminarCeldaNoIngreso(semanaId, key);
+                return;
+            }
+
+            // Color diferenciado para actividades especiales en la grilla
+            const especial = COLORES_ESPECIALES[reg.docente];
+            if (especial) {
+                el.style.background = especial.bg;
+                el.innerHTML = `<div style='color:white;font-weight:bold;font-size:12px;'>${especial.label}</div>`;
+            } else {
+                el.style.background = "#1a73e8";
+                el.innerHTML = "<div style='color:white;'><b>" + reg.docente.split(' ')[0] + "</b><br>" + reg.grado + reg.seccion + "</div>";
+            }
+        }
+    });
+});
+</script>
+</body>
+</html>
